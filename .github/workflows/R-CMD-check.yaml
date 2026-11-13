@@ -11,6 +11,10 @@ jobs:
   R-CMD-check:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # ASReml-R is proprietary and cannot be installed from CRAN on CI.
+      # GSPip checks for it only when an ASReml-dependent function is called.
+      _R_CHECK_FORCE_SUGGESTS_: false
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,7 +26,11 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::rcmdcheck
+          # Do not ask pak to resolve the proprietary asreml Suggests entry.
+          dependencies: '"hard"'
+          extra-packages: |
+            any::rcmdcheck
+            any::testthat
           needs: check
 
       - name: Check package
