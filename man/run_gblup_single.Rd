@@ -8,6 +8,7 @@ run_gblup_single(
   grm_file,
   pheno_file,
   output_dir,
+  engine,
   run_label = "GBLUP_NBL",
   id_col = "GenoID",
   trait_col = "NBL",
@@ -30,7 +31,13 @@ run_gblup_single(
   within_stratum_pa = TRUE,
   min_stratum_n = 10L,
   overwrite_outputs = FALSE,
-  asreml_workspace = 3.2e+08
+  asreml_workspace = 3.2e+08,
+  bglr_n_iter = 12000L,
+  bglr_burn_in = 2000L,
+  bglr_thin = 10L,
+  bglr_seed = 123L,
+  bglr_R2 = 0.5,
+  bglr_verbose = FALSE
 )
 }
 \arguments{
@@ -39,6 +46,8 @@ run_gblup_single(
 \item{pheno_file}{Path to the stage-1 BLUE table.}
 
 \item{output_dir}{Directory receiving analysis outputs.}
+
+\item{engine}{Explicit model engine: \code{"asreml"} or \code{"bglr"}.}
 
 \item{run_label}{Prefix used for output files.}
 
@@ -66,13 +75,23 @@ run_gblup_single(
 \item{overwrite_outputs}{Permit replacement of outputs with the same run label.}
 
 \item{asreml_workspace}{Workspace passed to ASReml-R.}
+
+\item{bglr_n_iter, bglr_burn_in, bglr_thin}{BGLR MCMC controls.}
+
+\item{bglr_seed}{Seed used for BGLR sampling.}
+
+\item{bglr_R2}{Proportion of response variance assigned to BGLR linear
+predictors when its default priors are initialized.}
+
+\item{bglr_verbose}{Print BGLR iteration progress.}
 }
 \value{
 Invisibly, a `gspip_gblup_single` list containing metrics, predictions,
   input data used by the model, and output paths.
 }
 \description{
-Fits weighted genomic BLUP models from one stage-1 BLUE per genotype and
+Fits genomic prediction models from one stage-1 BLUE per genotype and
 evaluates them by repeated cross-validation or a fixed training/target split.
-ASReml-R is required only when this function is called.
+The ASReml backend uses REML; the open-source BGLR backend uses Bayesian
+RKHS regression with the supplied GRM as its kernel.
 }

@@ -12,6 +12,7 @@ grm_file   <- "path/to/GRM.csv"
 pheno_file <- "path/to/stage1_BLUEs.csv"
 output_dir <- "path/to/results"
 run_label  <- "GBLUP_GxE_NBL"
+engine     <- "asreml" # "asreml" or open-source "bglr"
 
 # Columns
 id_col     <- "GenoID"
@@ -32,6 +33,8 @@ grm_strata_seed         <- 123L
 fix_stage1_error  <- TRUE
 nonmarker_effects <- TRUE
 env_h2            <- NULL
+# For engine <- "bglr", use:
+# fix_stage1_error <- FALSE; nonmarker_effects <- FALSE
 
 # Evaluation
 cv_scheme    <- "CV1" # "CV1" or "CV2"
@@ -47,11 +50,18 @@ min_stratum_n     <- 10L
 # Run
 overwrite_outputs <- FALSE
 asreml_workspace  <- 32e07
+bglr_n_iter        <- 12000L
+bglr_burn_in       <- 2000L
+bglr_thin          <- 10L
+bglr_seed          <- 123L
+bglr_R2            <- 0.5
+bglr_verbose       <- FALSE
 
 result <- run_gblup_gxe(
   grm_file = grm_file,
   pheno_file = pheno_file,
   output_dir = output_dir,
+  engine = engine,
   run_label = run_label,
   id_col = id_col,
   trait_col = trait_col,
@@ -77,7 +87,13 @@ result <- run_gblup_gxe(
   within_stratum_pa = within_stratum_pa,
   min_stratum_n = min_stratum_n,
   overwrite_outputs = overwrite_outputs,
-  asreml_workspace = asreml_workspace
+  asreml_workspace = asreml_workspace,
+  bglr_n_iter = bglr_n_iter,
+  bglr_burn_in = bglr_burn_in,
+  bglr_thin = bglr_thin,
+  bglr_seed = bglr_seed,
+  bglr_R2 = bglr_R2,
+  bglr_verbose = bglr_verbose
 )
 
 print(result$summary)

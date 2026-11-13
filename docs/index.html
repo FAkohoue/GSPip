@@ -94,7 +94,7 @@
 <p>Install the development version from GitHub:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"pak"</span><span class="op">)</span></span>
-<span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/pak/man/pak.html" class="external-link">pak</a></span><span class="op">(</span><span class="st">"FAkohoue/GSPip"</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pak.html" class="external-link">pak</a></span><span class="op">(</span><span class="st">"FAkohoue/GSPip"</span><span class="op">)</span></span></code></pre></div>
 <p>Install from the local checkout during development:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"D:/OneDrive - CGIAR/GitHub libraries/GSPip"</span>,</span>
@@ -116,21 +116,31 @@
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="reference/gspip_script.html">gspip_script</a></span><span class="op">(</span><span class="st">"optimize_training_population"</span>, copy_to <span class="op">=</span> <span class="st">"analysis/"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="reference/gspip_script.html">gspip_script</a></span><span class="op">(</span><span class="st">"gblup_cv_single"</span>, copy_to <span class="op">=</span> <span class="st">"analysis/"</span><span class="op">)</span></span></code></pre></div>
-<p>ASReml-R is required only when <code><a href="reference/run_gblup_single.html">run_gblup_single()</a></code>, <code><a href="reference/run_gblup_gxe.html">run_gblup_gxe()</a></code>, or their editable wrappers are executed. It still needs a separate VSNi installation and valid license. Use a new <code>run_label</code> for each analysis; the workflows stop before replacing existing results unless explicitly allowed.</p>
+<p>Both GBLUP functions require an explicit model engine. Use <code>engine = "asreml"</code> for the REML implementation or <code>engine = "bglr"</code> for the fully open-source Bayesian implementation. ASReml-R needs a separate VSNi installation and valid license; BGLR is installed from CRAN. Use a new <code>run_label</code> for each analysis; the workflows stop before replacing existing results unless explicitly allowed.</p>
+<p>For BGLR, the model settings must acknowledge that residual scale is estimated and that GSPip currently fits genomic kernels only:</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">engine</span>             <span class="op">&lt;-</span> <span class="st">"bglr"</span></span>
+<span><span class="va">fix_stage1_error</span>   <span class="op">&lt;-</span> <span class="cn">FALSE</span></span>
+<span><span class="va">nonmarker_effects</span>  <span class="op">&lt;-</span> <span class="cn">FALSE</span></span>
+<span><span class="va">bglr_n_iter</span>        <span class="op">&lt;-</span> <span class="fl">12000L</span></span>
+<span><span class="va">bglr_burn_in</span>       <span class="op">&lt;-</span> <span class="fl">2000L</span></span>
+<span><span class="va">bglr_thin</span>          <span class="op">&lt;-</span> <span class="fl">10L</span></span>
+<span><span class="va">bglr_seed</span>          <span class="op">&lt;-</span> <span class="fl">123L</span></span></code></pre></div>
+<p>BGLR uses the GRM as an RKHS kernel. In the G × E workflow it fits a genomic main-effect kernel and a genomic-by-environment kernel. Its posterior quantities are labeled with <code>_posterior</code>; they are not REML or Cullis estimates.</p>
 <p>Paths may be absolute or relative to the R working directory. For a reproducible shared analysis, prefer project-relative paths and record the commit hash used for the run.</p>
 </div>
 <div class="section level2">
 <h2 id="complete-example-data">Complete example data<a class="anchor" aria-label="anchor" href="#complete-example-data"></a>
 </h2>
 <p>GSPip ships a complete, mutually aligned example set with 120 genotypes, 240 markers, three populations, and three environments. Load every R-native object as one list:</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="va">gs_example_all</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">gs_example_all</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/dim.html" class="external-link">dim</a></span><span class="op">(</span><span class="va">gs_example_all</span><span class="op">$</span><span class="va">geno</span><span class="op">)</span> <span class="co"># 120 x 240</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/dim.html" class="external-link">dim</a></span><span class="op">(</span><span class="va">gs_example_all</span><span class="op">$</span><span class="va">grm</span><span class="op">)</span>  <span class="co"># 120 x 120</span></span></code></pre></div>
 <p>Individual datasets are also available through <code><a href="https://rdrr.io/r/utils/data.html" class="external-link">data()</a></code>, including <code>gs_example_geno</code>, <code>gs_example_marker_map</code>, <code>gs_example_marker_weights</code>, <code>gs_example_blues_single</code>, <code>gs_example_blues_gxe</code>, <code>gs_example_candidate_ids</code>, <code>gs_example_target_ids</code>, <code>gs_example_grm</code>, and <code>gs_example_truth</code>.</p>
 <p>Equivalent numeric, HapMap, and VCF genotype files and all workflow inputs are installed under <code>extdata</code>:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">numeric_file</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span></span>
 <span>  <span class="st">"extdata"</span>, <span class="st">"example_genotypes_numeric.csv"</span>, package <span class="op">=</span> <span class="st">"GSPip"</span></span>
 <span><span class="op">)</span></span>
@@ -142,7 +152,7 @@
 <span>  <span class="st">"extdata"</span>, <span class="st">"example_BLUEs_gxe.csv"</span>, package <span class="op">=</span> <span class="st">"GSPip"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <p>The set also includes external marker weights, candidate and target ID tables, simulation truth, and <code>example_manifest.csv</code>, which maps every file to its purpose. Regenerate all packaged data from the repository root with:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/source.html" class="external-link">source</a></span><span class="op">(</span><span class="st">"data-raw/generate_example_data.R"</span><span class="op">)</span></span></code></pre></div>
 <p>The generator uses base R, protects existing outputs by default, and accepts <code>GS_EXAMPLE_OVERWRITE=true</code> for deliberate non-interactive regeneration.</p>
 <blockquote>
@@ -177,11 +187,11 @@
 </tbody>
 </table>
 <p>For the single-genotype script, the no-weight configuration is:</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">weight_col</span>        <span class="op">&lt;-</span> <span class="cn">NULL</span></span>
 <span><span class="va">fix_stage1_error</span>  <span class="op">&lt;-</span> <span class="cn">FALSE</span></span>
 <span><span class="va">nonmarker_effects</span> <span class="op">&lt;-</span> <span class="cn">FALSE</span></span></code></pre></div>
-<p>This gives every observed BLUE equal weight and lets ASReml estimate the residual variance. The <code>se_col</code> setting is ignored. The non-marker effect must be disabled because, with one record per genotype and an estimated residual scale, it cannot be separated from the residual.</p>
+<p>This gives every observed BLUE equal weight and lets the selected engine estimate the residual variance. The <code>se_col</code> setting is ignored. The non-marker effect must be disabled because, with one record per genotype and an estimated residual scale, it cannot be separated from the residual.</p>
 <p>For the G × E script, at least one real precision measure is required:</p>
 <ul>
 <li>If the weight column exists, its positive finite values are used.</li>
@@ -198,7 +208,7 @@
 <div class="section level4">
 <h4 id="choice-1-run-without-stratification">Choice 1: run without stratification<a class="anchor" aria-label="anchor" href="#choice-1-run-without-stratification"></a>
 </h4>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">strata_col</span>             <span class="op">&lt;-</span> <span class="cn">NULL</span></span>
 <span><span class="va">derive_strata_from_grm</span> <span class="op">&lt;-</span> <span class="cn">FALSE</span></span></code></pre></div>
 <p>In <code>gblup_cv_single.R</code> and G × E CV1, genotypes are allocated across folds without population balancing. In G × E CV2, rows remain balanced within environments, but not within populations. Population-specific <code>PA_CV_within_*</code> metrics are not produced.</p>
@@ -206,7 +216,7 @@
 <div class="section level4">
 <h4 id="choice-2-derive-genomic-strata-from-the-grm">Choice 2: derive genomic strata from the GRM<a class="anchor" aria-label="anchor" href="#choice-2-derive-genomic-strata-from-the-grm"></a>
 </h4>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">strata_col</span>              <span class="op">&lt;-</span> <span class="cn">NULL</span></span>
 <span><span class="va">derive_strata_from_grm</span>  <span class="op">&lt;-</span> <span class="cn">TRUE</span></span>
 <span><span class="va">grm_strata_n_clusters</span>   <span class="op">&lt;-</span> <span class="cn">NULL</span> <span class="co"># Automatically select k</span></span>
@@ -259,7 +269,7 @@
 <div class="section level4">
 <h4 id="choice-3-use-a-supplied-column">Choice 3: use a supplied column<a class="anchor" aria-label="anchor" href="#choice-3-use-a-supplied-column"></a>
 </h4>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">strata_col</span>             <span class="op">&lt;-</span> <span class="st">"Population"</span></span>
 <span><span class="va">derive_strata_from_grm</span> <span class="op">&lt;-</span> <span class="cn">FALSE</span></span></code></pre></div>
 <p>The named column must exist, contain no missing or empty values, and assign each genotype to only one stratum. A supplied, scientifically justified population assignment is preferable to GRM-derived clusters when available.</p>
@@ -298,7 +308,7 @@
 </table>
 <p>Candidate and target files are CSV files with one unique, non-empty ID per row in the column named by <code>id_col</code> (default <code>GenoID</code>). Every ID must be in the GRM. The two sets must be disjoint. With <code>candidate_ids_file &lt;- NULL</code>, targeted mode uses every GRM genotype not in the target file as a candidate; no-test mode uses every GRM genotype as a candidate.</p>
 <p>Minimal targeted configuration:</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">grm_file</span>           <span class="op">&lt;-</span> <span class="st">"results/example_grm.csv"</span></span>
 <span><span class="va">candidate_ids_file</span> <span class="op">&lt;-</span> <span class="st">"data/candidate_ids.csv"</span> <span class="co"># Or NULL</span></span>
 <span><span class="va">target_ids_file</span>    <span class="op">&lt;-</span> <span class="st">"data/target_ids.csv"</span></span>
@@ -370,7 +380,7 @@
 <h3 id="evaluate-the-selected-set-in-gblup">Evaluate the selected set in GBLUP<a class="anchor" aria-label="anchor" href="#evaluate-the-selected-set-in-gblup"></a>
 </h3>
 <p>Set the following in <code>gblup_cv_single.R</code> or <code>gblup_cv_gxe.R</code>:</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">evaluation_mode</span>   <span class="op">&lt;-</span> <span class="st">"fixed_split"</span></span>
 <span><span class="va">training_ids_file</span> <span class="op">&lt;-</span> <span class="st">"results/STPGA_training_selected_training.csv"</span></span>
 <span><span class="va">target_ids_file</span>   <span class="op">&lt;-</span> <span class="st">"results/STPGA_training_target_ids.csv"</span></span></code></pre></div>
@@ -402,11 +412,12 @@
 <tr>
 <td>CV scripts</td>
 <td>
-<code>data.table</code>, <code>ASRgenomics</code>, <code>cluster</code>, and <code>asreml</code> with a valid VSNi license</td>
+<code>data.table</code>, <code>cluster</code>, plus either <code>asreml</code> and <code>ASRgenomics</code>, or open-source <code>BGLR</code>
+</td>
 </tr>
 </tbody>
 </table>
-<p>The repository’s GitHub Actions workflow parses every <code>.R</code> file and runs synthetic numeric, HapMap, and VCF reader tests on each push and pull request. This catches syntax errors and genotype-format regressions without requiring ASReml or private data. A full numerical run still requires the remaining packages, license, and representative input data.</p>
+<p>The repository’s GitHub Actions workflow installs BGLR and runs the open-source tests on each push and pull request without requiring ASReml or private data. ASReml analyses still need to be tested in a licensed environment.</p>
 </div>
 </div>
 <div class="section level2">
@@ -414,7 +425,7 @@
 </h2>
 <ul>
 <li>
-<code>base_seed</code>, <code>qc_seed</code>, <code>cluster_seed</code>, <code>grm_strata_seed</code>, <code>ga_seed</code>, and <code>random_seed</code> make fold assignment, imputation, clustering, optimization, and random benchmarks reproducible for fixed inputs and package versions.</li>
+<code>base_seed</code>, <code>bglr_seed</code>, <code>qc_seed</code>, <code>cluster_seed</code>, <code>grm_strata_seed</code>, <code>ga_seed</code>, and <code>random_seed</code> make fold assignment, Bayesian sampling, imputation, clustering, optimization, and random benchmarks reproducible for fixed inputs and package versions.</li>
 <li>Each run-info file records the settings, normalized input paths, input counts, and <code><a href="https://rdrr.io/r/utils/sessionInfo.html" class="external-link">sessionInfo()</a></code>.</li>
 <li>
 <code>data/</code> and <code>results/</code> are ignored by Git to reduce the risk of publishing private inputs or large generated files. Review <code>git status</code> before every push.</li>
@@ -425,12 +436,12 @@
 <div class="section level3">
 <h3 id="pre-release-smoke-test">Pre-release smoke test<a class="anchor" aria-label="anchor" href="#pre-release-smoke-test"></a>
 </h3>
-<p>Run this once on a small, representative copy of your real data in the same R and ASReml environment your colleagues will use:</p>
+<p>Run this once on a small, representative copy of your real data in the same R and model-engine environment your colleagues will use:</p>
 <ol style="list-style-type: decimal">
 <li>Set <code>n_iterations &lt;- 2</code>, <code>k_folds &lt;- 2</code>, and use a temporary <code>run_label</code> for repeated CV.</li>
 <li>Run the GRM script and confirm that <code>_grm_info.txt</code> reports an invertible matrix, a positive smallest eigenvalue, and plausible diagonal/off-diagonal means.</li>
 <li>If using optimization, first use a small <code>training_size</code>, <code>ga_iterations</code>, <code>ga_replicates</code>, and <code>random_replicates</code>. Confirm the selected IDs are candidates, are unique, and are disjoint from the targets. Then restore the production settings.</li>
-<li>Run the relevant GBLUP script and confirm that every expected output is present and <code>Converged</code> is 1 for every fit. For repeated CV, <code>N_iter</code> should be 2 for the principal metrics; fixed-split output has one iteration.</li>
+<li>Run the relevant GBLUP script and confirm that every expected output is present. For ASReml, <code>Converged</code> must be 1 for every fit. For BGLR, first use a short diagnostic chain retaining at least 100 samples, then restore production MCMC settings and assess chain stability. For repeated CV, <code>N_iter</code> should be 2 for the principal metrics; fixed-split output has one iteration.</li>
 <li>Check that prediction row counts and genotype/environment IDs match the inputs. In fixed-split mode, verify <code>_split_ids.csv</code> against the optimizer files.</li>
 <li>Run the same script again without changing <code>run_label</code>; it should stop before overwriting any result.</li>
 <li>Restore the intended fold, iteration, optimizer, and run-label settings before the production run.</li>
@@ -655,10 +666,10 @@
 <h3 id="marker-weights">Marker weights<a class="anchor" aria-label="anchor" href="#marker-weights"></a>
 </h3>
 <p>Leave both weight settings <code>NULL</code> for AGHmatrix’s equal marker weights. Numeric input may name an inline column:</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">marker_weight_col</span> <span class="op">&lt;-</span> <span class="st">"MarkerWeight"</span></span></code></pre></div>
 <p>All three formats may instead use a separate table:</p>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">marker_weights_file</span>      <span class="op">&lt;-</span> <span class="st">"marker_weights.csv"</span></span>
 <span><span class="va">marker_weights_id_col</span>    <span class="op">&lt;-</span> <span class="st">"MarkerID"</span></span>
 <span><span class="va">marker_weights_value_col</span> <span class="op">&lt;-</span> <span class="st">"Weight"</span></span></code></pre></div>
@@ -964,11 +975,11 @@
 </h3>
 <ul>
 <li>The GRM from <code>grm_builder.R</code>, or a compatible GRM from another source.</li>
-<li>A table of stage-1 BLUEs, with BLUE weights passed to <code>asreml(weights = )</code>:
+<li>A table of stage-1 BLUEs. ASReml receives inverse-variance weights directly; BGLR receives their square roots because BGLR defines residual variance as inversely proportional to its squared weight:
 <ul>
 <li>The weight column (<code>weight_col</code>), for example Smith weights, is used where it has a value.</li>
 <li>Where it has none, the weight is 1/SE^2, from the SE column (<code>se_col</code>).</li>
-<li>A row with a trait value but neither a weight nor an SE stops the run.</li>
+<li>A row with a trait value but neither a weight nor an SE stops the run. GSPip converts BGLR’s weighted internal fitted values, posterior SDs, and RKHS effects back to the original trait scale before calculating or exporting results.</li>
 </ul>
 </li>
 <li>Rows with no trait value are kept and predicted. They do not contribute to the fit or to the metrics.</li>
@@ -1174,17 +1185,25 @@
 <col width="50%">
 </colgroup>
 <thead><tr>
-<th>Script</th>
+<th>Engine and script</th>
 <th>Model</th>
 </tr></thead>
 <tbody>
 <tr>
-<td><code>gblup_cv_single.R</code></td>
+<td>ASReml single</td>
 <td>y = mu + g + r + e</td>
 </tr>
 <tr>
-<td><code>gblup_cv_gxe.R</code></td>
-<td>y = mu + E + g + r + gE + rE + e, with environment E fixed</td>
+<td>ASReml G × E</td>
+<td>y = mu + E + g + r + gE + rE + e</td>
+</tr>
+<tr>
+<td>BGLR single</td>
+<td>y = mu + g + e, with the GRM as an RKHS kernel</td>
+</tr>
+<tr>
+<td>BGLR G × E</td>
+<td>y = mu + E + g + gE + e, with genomic main and G × E RKHS kernels</td>
 </tr>
 </tbody>
 </table>
@@ -1229,7 +1248,7 @@
 </tr>
 </tbody>
 </table>
-<p>With <code>fix_stage1_error &lt;- TRUE</code>, s = 1, so the stage-1 error variances are fixed at 1/w. The terms r and rE hold genetic variation the markers do not capture.</p>
+<p>With ASReml and <code>fix_stage1_error &lt;- TRUE</code>, s = 1, so stage-1 error variances are fixed at 1/w. The terms r and rE hold variation the markers do not capture. BGLR requires <code>fix_stage1_error &lt;- FALSE</code> and <code>nonmarker_effects &lt;- FALSE</code>; it estimates the posterior residual scale.</p>
 </div>
 <div class="section level3">
 <h3 id="evaluation-modes">Evaluation modes<a class="anchor" aria-label="anchor" href="#evaluation-modes"></a>
@@ -1304,7 +1323,7 @@
 <td>
 <code>_train_predictions.csv</code>, <code>_train_se.csv</code>
 </td>
-<td>In-sample predictions of the <code>vm</code> term and their SE, averaged over the folds where the genotype was in training. Not for assessing predictive performance</td>
+<td>In-sample genomic predictions and uncertainty, averaged over training folds. ASReml reports the <code>vm</code> effect and its SE; BGLR reports the genomic posterior mean and posterior SD of the fitted value. Not for assessing predictive performance</td>
 </tr>
 <tr>
 <td><code>_intercepts.csv</code></td>
@@ -1433,6 +1452,30 @@
 <tr>
 <td><code>Converged</code></td>
 <td>1 if ASReml reported convergence, otherwise 0</td>
+</tr>
+<tr>
+<td>
+<code>Vg_posterior</code>, <code>Vge_posterior</code>, <code>Residual_scale_posterior</code>, <code>Ve_posterior</code>
+</td>
+<td>BGLR posterior means; <code>Vge_posterior</code> is present only for G × E</td>
+</tr>
+<tr>
+<td><code>PVE_posterior</code></td>
+<td>BGLR posterior plug-in PVE calculated from posterior mean variance components and GRM scale</td>
+</tr>
+<tr>
+<td><code>Heritability_posterior</code></td>
+<td>BGLR single-environment posterior plug-in heritability</td>
+</tr>
+<tr>
+<td><code>Heritability_genotype_mean_posterior</code></td>
+<td>BGLR G × E genotype-mean approximation, averaging G × E and residual contributions over training environments</td>
+</tr>
+<tr>
+<td>
+<code>DIC</code>, <code>MCMC_retained</code>
+</td>
+<td>BGLR deviance information criterion and number of retained posterior samples</td>
 </tr>
 </tbody>
 </table>

@@ -1,8 +1,9 @@
 # Run genotype-by-environment GBLUP evaluation
 
-Fits weighted genomic BLUP models from stage-1 BLUEs observed across
+Fits genomic prediction models from stage-1 BLUEs observed across
 environments and evaluates CV1, CV2, or a fixed genotype-level split.
-ASReml-R is required only when this function is called.
+The ASReml backend uses REML; the open-source BGLR backend uses
+genomic-main and genomic-by-environment RKHS kernels.
 
 ## Usage
 
@@ -11,6 +12,7 @@ run_gblup_gxe(
   grm_file,
   pheno_file,
   output_dir,
+  engine,
   run_label = "GBLUP_GxE_NBL",
   id_col = "GenoID",
   trait_col = "NBL",
@@ -36,7 +38,13 @@ run_gblup_gxe(
   within_stratum_pa = TRUE,
   min_stratum_n = 10L,
   overwrite_outputs = FALSE,
-  asreml_workspace = 3.2e+08
+  asreml_workspace = 3.2e+08,
+  bglr_n_iter = 12000L,
+  bglr_burn_in = 2000L,
+  bglr_thin = 10L,
+  bglr_seed = 123L,
+  bglr_R2 = 0.5,
+  bglr_verbose = FALSE
 )
 ```
 
@@ -53,6 +61,10 @@ run_gblup_gxe(
 - output_dir:
 
   Directory receiving analysis outputs.
+
+- engine:
+
+  Explicit model engine: `"asreml"` or `"bglr"`.
 
 - run_label:
 
@@ -113,6 +125,23 @@ run_gblup_gxe(
 - asreml_workspace:
 
   Workspace passed to ASReml-R.
+
+- bglr_n_iter, bglr_burn_in, bglr_thin:
+
+  BGLR MCMC controls.
+
+- bglr_seed:
+
+  Seed used for BGLR sampling.
+
+- bglr_R2:
+
+  Proportion of response variance assigned to BGLR linear predictors
+  when its default priors are initialized.
+
+- bglr_verbose:
+
+  Print BGLR iteration progress.
 
 ## Value
 

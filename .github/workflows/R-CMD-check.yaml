@@ -29,6 +29,7 @@ jobs:
           # Do not ask pak to resolve the proprietary asreml Suggests entry.
           dependencies: '"hard"'
           extra-packages: |
+            any::BGLR
             any::rcmdcheck
             any::testthat
           needs: check

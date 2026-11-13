@@ -1,12 +1,14 @@
 #' Run single-environment GBLUP evaluation
 #'
-#' Fits weighted genomic BLUP models from one stage-1 BLUE per genotype and
+#' Fits genomic prediction models from one stage-1 BLUE per genotype and
 #' evaluates them by repeated cross-validation or a fixed training/target split.
-#' ASReml-R is required only when this function is called.
+#' The ASReml backend uses REML; the open-source BGLR backend uses Bayesian
+#' RKHS regression with the supplied GRM as its kernel.
 #'
 #' @param grm_file Path to a square GRM CSV whose first column contains genotype IDs.
 #' @param pheno_file Path to the stage-1 BLUE table.
 #' @param output_dir Directory receiving analysis outputs.
+#' @param engine Explicit model engine: \code{"asreml"} or \code{"bglr"}.
 #' @param run_label Prefix used for output files.
 #' @param id_col,trait_col,strata_col,weight_col,se_col Input column names.
 #'   `strata_col` and `weight_col` may be `NULL` where documented.
@@ -21,12 +23,18 @@
 #' @param within_stratum_pa,min_stratum_n Controls within-stratum prediction ability.
 #' @param overwrite_outputs Permit replacement of outputs with the same run label.
 #' @param asreml_workspace Workspace passed to ASReml-R.
+#' @param bglr_n_iter,bglr_burn_in,bglr_thin BGLR MCMC controls.
+#' @param bglr_seed Seed used for BGLR sampling.
+#' @param bglr_R2 Proportion of response variance assigned to BGLR linear
+#'   predictors when its default priors are initialized.
+#' @param bglr_verbose Print BGLR iteration progress.
 #'
 #' @return Invisibly, a `gspip_gblup_single` list containing metrics, predictions,
 #'   input data used by the model, and output paths.
 #' @export
 run_gblup_single <- function(
-    grm_file, pheno_file, output_dir, run_label = "GBLUP_NBL",
+    grm_file, pheno_file, output_dir, engine,
+    run_label = "GBLUP_NBL",
     id_col = "GenoID", trait_col = "NBL", strata_col = "Population",
     weight_col = "Weight", se_col = "SE",
     derive_strata_from_grm = FALSE, grm_strata_n_clusters = NULL,
@@ -36,23 +44,36 @@ run_gblup_single <- function(
     base_seed = 0L, evaluation_mode = c("repeated_cv", "fixed_split"),
     training_ids_file = NULL, target_ids_file = NULL,
     within_stratum_pa = TRUE, min_stratum_n = 10L,
-    overwrite_outputs = FALSE, asreml_workspace = 32e07) {
+    overwrite_outputs = FALSE, asreml_workspace = 32e07,
+    bglr_n_iter = 12000L, bglr_burn_in = 2000L, bglr_thin = 10L,
+    bglr_seed = 123L, bglr_R2 = 0.5, bglr_verbose = FALSE) {
+  engine <- match.arg(engine, c("asreml", "bglr"))
   evaluation_mode <- match.arg(evaluation_mode)
   #===============================================================================
   # PACKAGES
   #===============================================================================
-  required_pkgs <- c("data.table", "asreml", "ASRgenomics", "cluster")
+  required_pkgs <- c(
+    "data.table", "cluster",
+    if (engine == "asreml") c("asreml", "ASRgenomics") else "BGLR"
+  )
   missing_pkgs  <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
   if (length(missing_pkgs) > 0) {
-    stop("Please install: ", paste(missing_pkgs, collapse = ", "),
-         ". asreml is licensed software available from VSNi, not from CRAN.", call. = FALSE)
+    engine_note <- if (engine == "asreml") {
+      " ASReml-R is licensed software available from VSNi, not from CRAN."
+    } else {
+      " Install BGLR with install.packages(\"BGLR\")."
+    }
+    stop("Please install: ", paste(missing_pkgs, collapse = ", "), ".", engine_note,
+         call. = FALSE)
   }
   # Bind ASReml model-term constructors in the function environment so formulas
   # can resolve them without attaching ASReml while the package is loaded.
-  asreml_namespace <- asNamespace("asreml")
-  vm  <- get("vm",  envir = asreml_namespace, inherits = FALSE)
-  ide <- get("ide", envir = asreml_namespace, inherits = FALSE)
-  rm(asreml_namespace)
+  if (engine == "asreml") {
+    asreml_namespace <- asNamespace("asreml")
+    vm  <- get("vm",  envir = asreml_namespace, inherits = FALSE)
+    ide <- get("ide", envir = asreml_namespace, inherits = FALSE)
+    rm(asreml_namespace)
+  }
   
   #===============================================================================
   # FUNCTIONS
@@ -111,6 +132,15 @@ run_gblup_single <- function(
     if (!scalar_logical(nonmarker_effects)) {
       stop("nonmarker_effects must be TRUE or FALSE.", call. = FALSE)
     }
+    if (engine == "bglr" && fix_stage1_error) {
+      stop("The BGLR backend estimates its residual variance scale. Set ",
+           "fix_stage1_error <- FALSE.", call. = FALSE)
+    }
+    if (engine == "bglr" && nonmarker_effects) {
+      stop("The BGLR backend does not add a BLUE-level identity effect because ",
+           "one record per genotype cannot identify it separately from residual error. ",
+           "Set nonmarker_effects <- FALSE.", call. = FALSE)
+    }
     if (!nonempty_string(evaluation_mode) || !evaluation_mode %in% c("repeated_cv", "fixed_split")) {
       stop('evaluation_mode must be "repeated_cv" or "fixed_split".', call. = FALSE)
     }
@@ -162,9 +192,20 @@ run_gblup_single <- function(
            call. = FALSE)
     }
     if (!scalar_logical(overwrite_outputs)) stop("overwrite_outputs must be TRUE or FALSE.", call. = FALSE)
-    if (!is.numeric(asreml_workspace) || length(asreml_workspace) != 1L ||
-        !is.finite(asreml_workspace) || asreml_workspace <= 0) {
+    if (engine == "asreml" &&
+        (!is.numeric(asreml_workspace) || length(asreml_workspace) != 1L ||
+         !is.finite(asreml_workspace) || asreml_workspace <= 0)) {
       stop("asreml_workspace must be one positive finite number.", call. = FALSE)
+    }
+    if (engine == "bglr") {
+      .gspip_validate_bglr_controls(
+        bglr_n_iter, bglr_burn_in, bglr_thin, bglr_seed, bglr_R2, bglr_verbose
+      )
+      max_bglr_seed <- bglr_seed + n_iterations * k_folds
+      if (!is.finite(max_bglr_seed) || max_bglr_seed > .Machine$integer.max) {
+        stop("bglr_seed plus the maximum iteration/fold offset exceeds R's integer range.",
+             call. = FALSE)
+      }
     }
   }
   
@@ -569,6 +610,13 @@ run_gblup_single <- function(
       paste("Date:", format(Sys.time())),
       paste("GRM:", normalizePath(grm_file)),
       paste("Stage-1 BLUEs:", normalizePath(pheno_file)),
+      paste("Engine:", engine),
+      if (engine == "bglr") {
+        paste("BGLR MCMC: nIter =", bglr_n_iter, "| burnIn =", bglr_burn_in,
+              "| thin =", bglr_thin, "| retained =",
+              floor(bglr_n_iter / bglr_thin) - floor(bglr_burn_in / bglr_thin),
+              "| R2 =", bglr_R2, "| seed =", bglr_seed)
+      },
       paste("Evaluation mode:", evaluation_mode),
       if (!is.null(fixed_split)) paste("Training ID file:", normalizePath(training_ids_file),
                                        "| genotypes:", length(fixed_split$training)),
@@ -582,7 +630,9 @@ run_gblup_single <- function(
                 grm_strata_result$selected_silhouette, grm_strata_result$n_pcs,
                 grm_strata_result$cumulative_pc_variance, grm_strata_seed)
       },
-      paste("Stage-1 error:", if (fix_stage1_error) "fixed, residual = 1/w" else "scale estimated, residual = s/w"),
+      paste("Stage-1 error:", if (fix_stage1_error) "fixed, residual = 1/w" else
+            paste0(if (engine == "bglr") "posterior " else "",
+                   "scale estimated, residual = s/w")),
       paste("Non-marker effect r:", if (nonmarker_effects) "yes" else "no"),
       paste("Weights:", pheno_input$weight_source),
       if (!is.null(weight_col)) paste("Weight range:", paste(signif(range(pheno$w[!is.na(pheno$y_trait)]), 4), collapse = " to ")),
@@ -674,13 +724,17 @@ run_gblup_single <- function(
   # STEP 2. DEFINE THE MODEL
   #===============================================================================
   # Top-level objects: predict() re-evaluates the model call
-  fixed_formula <- y_trait ~ 1
-  random_formula <- if (nonmarker_effects) {
-    ~ vm(GenoID, training_grm_inv.sparse) + ide(GenoID)
+  fixed_formula <- if (engine == "asreml") y_trait ~ 1 else NULL
+  random_formula <- if (engine == "asreml") {
+    if (nonmarker_effects) {
+      ~ vm(GenoID, training_grm_inv.sparse) + ide(GenoID)
+    } else {
+      ~ vm(GenoID, training_grm_inv.sparse)
+    }
   } else {
-    ~ vm(GenoID, training_grm_inv.sparse)
+    NULL
   }
-  residual_dispersion <- if (fix_stage1_error) 1 else NA
+  residual_dispersion <- if (engine == "asreml" && fix_stage1_error) 1 else NA
   
   #===============================================================================
   # STEP 3. PREPARE RESULT TABLES
@@ -733,69 +787,137 @@ run_gblup_single <- function(
       }
   
       training_grm <- grm[training_ids, training_ids, drop = FALSE]
-      training_grm_inv.sparse <- ASRgenomics::G.inverse(G = training_grm, sparseform = TRUE)$Ginv
       observed_y <- training_data$y_trait
-      training_data$GenoID <- factor(training_data$GenoID, levels = training_ids)
-  
-      # Fit the model on the training set
-      GBLUPcv <- asreml::asreml(
-        fixed      = fixed_formula,
-        random     = random_formula,
-        weights    = "w",
-        family     = asreml::asr_gaussian(dispersion = residual_dispersion),
-        na.action  = asreml::na.method(x = "include", y = "include"),
-        pworkspace = asreml_workspace,
-        workspace  = asreml_workspace,
-        data       = training_data
-      )
-      converged <- isTRUE(GBLUPcv$converge)
-      if (!converged) {
-        warning(sprintf("ASReml did not report convergence: iteration %d, fold %d",
-                        iteration, fold), call. = FALSE)
+      if (engine == "asreml") {
+        training_grm_inv.sparse <- ASRgenomics::G.inverse(
+          G = training_grm, sparseform = TRUE
+        )$Ginv
+        training_data$GenoID <- factor(training_data$GenoID, levels = training_ids)
+
+        GBLUPcv <- asreml::asreml(
+          fixed      = fixed_formula,
+          random     = random_formula,
+          weights    = "w",
+          family     = asreml::asr_gaussian(dispersion = residual_dispersion),
+          na.action  = asreml::na.method(x = "include", y = "include"),
+          pworkspace = asreml_workspace,
+          workspace  = asreml_workspace,
+          data       = training_data
+        )
+        converged <- isTRUE(GBLUPcv$converge)
+        if (!converged) {
+          warning(sprintf("ASReml did not report convergence: iteration %d, fold %d",
+                          iteration, fold), call. = FALSE)
+        }
+
+        varcomp <- extract_varcomp(GBLUPcv)
+        pred_train <- predict(
+          GBLUPcv, classify = "vm(GenoID, training_grm_inv.sparse)", sed = TRUE,
+          pworkspace = asreml_workspace, workspace = asreml_workspace
+        )
+        heritability <- cullis_heritability(
+          GBLUPcv, pred_train, varcomp, training_grm
+        )
+        fold_h2[fold] <- heritability$h2
+
+        intercept   <- extract_intercept(GBLUPcv)
+        random_coef <- as.matrix(GBLUPcv$coefficients$random)
+        u_train <- read_main_term(
+          random_coef, "vm(GenoID, training_grm_inv.sparse)_", training_ids
+        )
+        r_train <- if (nonmarker_effects) {
+          read_main_term(random_coef, "ide(GenoID)_", training_ids)
+        } else {
+          0
+        }
+
+        u_val <- grm[validation_ids, training_ids, drop = FALSE] %*%
+          solve(training_grm, u_train)
+        val_pred <- intercept + as.vector(u_val)
+        cv_predictions[validation_ids, iteration] <- val_pred
+
+        Vg <- varcomp$Vg
+        Vr <- varcomp$Vr
+        Ve <- varcomp$s * mean(1 / training_data$w[!is.na(observed_y)])
+        val <- prediction_metrics(validation_data$y_trait, val_pred)
+
+        metrics_list[[length(metrics_list) + 1L]] <- metric_rows(
+          iteration, fold,
+          Vg = Vg,
+          Vr = Vr,
+          Residual_scale = varcomp$s,
+          Ve = Ve,
+          PVE = safe_ratio(Vg * heritability$Dg, Vg * heritability$Dg + Vr + Ve),
+          heritability$metrics,
+          GOF = safe_cor(observed_y, intercept + u_train + r_train),
+          PredictionAbility = unname(val["PA"]),
+          Accuracy = accuracy_metric(unname(val["PA"]), heritability$h2),
+          RMSE = unname(val["RMSE"]),
+          Relative_RMSE = unname(val["Relative_RMSE"]),
+          Standardized_RMSE = unname(val["Standardized_RMSE"]),
+          Converged = as.numeric(converged)
+        )
+
+        fold_train[[fold]] <- read_train_predictions(pred_train)
+      } else {
+        y_bglr <- pheno$y_trait
+        validation_rows <- pheno$Fold == fold
+        y_bglr[validation_rows] <- NA_real_
+        bglr_fit <- .gspip_fit_bglr_single(
+          y = y_bglr,
+          ids = pheno$GenoID,
+          grm = grm,
+          weights = pheno$w,
+          n_iter = bglr_n_iter,
+          burn_in = bglr_burn_in,
+          thin = bglr_thin,
+          seed = bglr_seed + (iteration - 1L) * run_folds + fold,
+          R2 = bglr_R2,
+          verbose = bglr_verbose
+        )
+
+        val_pred <- bglr_fit$prediction[validation_rows]
+        cv_predictions[validation_ids, iteration] <- val_pred
+        train_rows <- match(training_ids, pheno$GenoID)
+        Dg <- mean(diag(training_grm)) - mean(training_grm)
+        Ve <- bglr_fit$Ve_scale *
+          mean(1 / training_data$w[!is.na(observed_y)])
+        h2 <- safe_ratio(bglr_fit$Vg * Dg, bglr_fit$Vg * Dg + Ve)
+        fold_h2[fold] <- h2
+        val <- prediction_metrics(validation_data$y_trait, val_pred)
+
+        metrics_list[[length(metrics_list) + 1L]] <- metric_rows(
+          iteration, fold,
+          Vg_posterior = bglr_fit$Vg,
+          Residual_scale_posterior = bglr_fit$Ve_scale,
+          Ve_posterior = Ve,
+          PVE_posterior = h2,
+          Heritability_posterior = h2,
+          DIC = bglr_fit$DIC,
+          MCMC_retained = bglr_fit$retained_samples,
+          GOF = safe_cor(
+            observed_y,
+            bglr_fit$prediction[train_rows]
+          ),
+          PredictionAbility = unname(val["PA"]),
+          Accuracy = accuracy_metric(unname(val["PA"]), h2),
+          RMSE = unname(val["RMSE"]),
+          Relative_RMSE = unname(val["Relative_RMSE"]),
+          Standardized_RMSE = unname(val["Standardized_RMSE"])
+        )
+
+        fold_train[[fold]] <- data.frame(
+          GenoID = training_ids,
+          GEBV = bglr_fit$genomic[train_rows],
+          SE = bglr_fit$prediction_sd[train_rows],
+          stringsAsFactors = FALSE
+        )
+        intercept <- bglr_fit$intercept
       }
-  
-      # Variance components, in-sample predictions and heritability
-      varcomp <- extract_varcomp(GBLUPcv)
-      pred_train <- predict(GBLUPcv, classify = "vm(GenoID, training_grm_inv.sparse)", sed = TRUE,
-                            pworkspace = asreml_workspace, workspace = asreml_workspace)
-      heritability <- cullis_heritability(GBLUPcv, pred_train, varcomp, training_grm)
-      fold_h2[fold] <- heritability$h2
-  
-      # Out-of-sample predictions: u_val = G_val,train %*% G_train^-1 %*% u_train
-      intercept   <- extract_intercept(GBLUPcv)
-      random_coef <- as.matrix(GBLUPcv$coefficients$random)
-      u_train <- read_main_term(random_coef, "vm(GenoID, training_grm_inv.sparse)_", training_ids)
-      r_train <- if (nonmarker_effects) read_main_term(random_coef, "ide(GenoID)_", training_ids) else 0
-  
-      u_val    <- grm[validation_ids, training_ids, drop = FALSE] %*% solve(training_grm, u_train)
-      val_pred <- intercept + as.vector(u_val)
-      cv_predictions[validation_ids, iteration] <- val_pred
-  
-      # Fold metrics
-      Vg <- varcomp$Vg
-      Vr <- varcomp$Vr
-      Ve <- varcomp$s * mean(1 / training_data$w[!is.na(observed_y)])
-      val <- prediction_metrics(validation_data$y_trait, val_pred)
-  
-      metrics_list[[length(metrics_list) + 1L]] <- metric_rows(
-        iteration, fold,
-        Vg = Vg,
-        Vr = Vr,
-        Residual_scale = varcomp$s,
-        Ve = Ve,
-        PVE = safe_ratio(Vg * heritability$Dg, Vg * heritability$Dg + Vr + Ve),
-        heritability$metrics,
-        GOF = safe_cor(observed_y, intercept + u_train + r_train),
-        PredictionAbility = unname(val["PA"]),
-        Accuracy = accuracy_metric(unname(val["PA"]), heritability$h2),
-        RMSE = unname(val["RMSE"]),
-        Relative_RMSE = unname(val["Relative_RMSE"]),
-        Standardized_RMSE = unname(val["Standardized_RMSE"]),
-        Converged = as.numeric(converged)
+      fold_blue[[fold]] <- data.frame(
+        Iter = iteration, Fold = fold, Intercept = intercept,
+        Engine = engine, stringsAsFactors = FALSE
       )
-  
-      fold_train[[fold]] <- read_train_predictions(pred_train)
-      fold_blue[[fold]]  <- data.frame(Iter = iteration, Fold = fold, Intercept = intercept)
     }
   
     # Pool the out-of-sample predictions of this iteration
@@ -856,8 +978,12 @@ run_gblup_single <- function(
   metrics_summary <- summarise_metrics(metrics)
   data.table::fwrite(metrics_summary, output_path("summary.csv"))
   
-  n_not_converged <- sum(metrics$Metric == "Converged" & metrics$Value == 0)
-  if (n_not_converged > 0) {
+  n_not_converged <- if (engine == "asreml") {
+    sum(metrics$Metric == "Converged" & metrics$Value == 0)
+  } else {
+    0L
+  }
+  if (n_not_converged > 0L) {
     warning(n_not_converged, " fold model(s) did not report convergence. See 'Converged' in the metrics file.",
             call. = FALSE)
   }
@@ -873,7 +999,7 @@ run_gblup_single <- function(
   output_files <- stats::setNames(vapply(output_suffixes, output_path, character(1)),
                                   output_suffixes)
   output_files <- output_files[file.exists(output_files)]
-  result <- list(metrics = metrics, summary = metrics_summary,
+  result <- list(engine = engine, metrics = metrics, summary = metrics_summary,
                  cv_predictions = cv_predictions,
                  train_predictions = train_predictions, train_se = train_se,
                  intercepts = intercepts, phenotype = pheno, fixed_split = fixed_split,
@@ -885,6 +1011,7 @@ run_gblup_single <- function(
 #' @export
 print.gspip_gblup_single <- function(x, ...) {
   cat("GSPip single-environment GBLUP evaluation\n")
+  cat("  Engine         :", if (is.null(x$engine)) "asreml" else x$engine, "\n")
   cat("  Prediction rows:", nrow(x$cv_predictions), "\n")
   cat("  Output files   :", length(x$output_files), "\n")
   print(x$summary)

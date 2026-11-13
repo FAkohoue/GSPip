@@ -11,8 +11,8 @@ Description: Reads numeric, HapMap, and VCF marker data, performs auditable
     marker and sample quality control, supports several missing-genotype
     strategies including external Beagle imputation, and constructs genomic
     relationship matrices with optional marker weights. Programmatic APIs
-    support training-population optimization and GBLUP evaluation with or
-    without genotype-by-environment effects.
+    support training-population optimization and GBLUP evaluation with either
+    'ASReml-R' or 'BGLR', with or without genotype-by-environment effects.
 URL: https://FAkohoue.github.io/GSPip/,
     https://github.com/FAkohoue/GSPip
 BugReports: https://github.com/FAkohoue/GSPip/issues
@@ -30,6 +30,7 @@ Imports:
     utils
 Suggests:
     asreml,
+    BGLR,
     rrBLUP,
     STPGA,
     testthat (>= 3.0.0)

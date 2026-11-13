@@ -74,13 +74,30 @@ gspip_script("optimize_training_population", copy_to = "analysis/")
 gspip_script("gblup_cv_single", copy_to = "analysis/")
 ```
 
-ASReml-R is required only when
-[`run_gblup_single()`](https://FAkohoue.github.io/GSPip/reference/run_gblup_single.md),
-[`run_gblup_gxe()`](https://FAkohoue.github.io/GSPip/reference/run_gblup_gxe.md),
-or their editable wrappers are executed. It still needs a separate VSNi
-installation and valid license. Use a new `run_label` for each analysis;
-the workflows stop before replacing existing results unless explicitly
-allowed.
+Both GBLUP functions require an explicit model engine. Use
+`engine = "asreml"` for the REML implementation or `engine = "bglr"` for
+the fully open-source Bayesian implementation. ASReml-R needs a separate
+VSNi installation and valid license; BGLR is installed from CRAN. Use a
+new `run_label` for each analysis; the workflows stop before replacing
+existing results unless explicitly allowed.
+
+For BGLR, the model settings must acknowledge that residual scale is
+estimated and that GSPip currently fits genomic kernels only:
+
+``` r
+engine             <- "bglr"
+fix_stage1_error   <- FALSE
+nonmarker_effects  <- FALSE
+bglr_n_iter        <- 12000L
+bglr_burn_in       <- 2000L
+bglr_thin          <- 10L
+bglr_seed          <- 123L
+```
+
+BGLR uses the GRM as an RKHS kernel. In the G × E workflow it fits a
+genomic main-effect kernel and a genomic-by-environment kernel. Its
+posterior quantities are labeled with `_posterior`; they are not REML or
+Cullis estimates.
 
 Paths may be absolute or relative to the R working directory. For a
 reproducible shared analysis, prefer project-relative paths and record
@@ -156,10 +173,11 @@ fix_stage1_error  <- FALSE
 nonmarker_effects <- FALSE
 ```
 
-This gives every observed BLUE equal weight and lets ASReml estimate the
-residual variance. The `se_col` setting is ignored. The non-marker
-effect must be disabled because, with one record per genotype and an
-estimated residual scale, it cannot be separated from the residual.
+This gives every observed BLUE equal weight and lets the selected engine
+estimate the residual variance. The `se_col` setting is ignored. The
+non-marker effect must be disabled because, with one record per genotype
+and an estimated residual scale, it cannot be separated from the
+residual.
 
 For the G × E script, at least one real precision measure is required:
 
@@ -393,20 +411,19 @@ genetic algorithm is not guaranteed to find a global optimum.
 |----|----|
 | `grm_builder.R` | `data.table`, `AGHmatrix`, `ASRgenomics`; `rrBLUP` only for `rrblup_em` imputation |
 | `optimize_training_population.R` | `data.table`, `STPGA` |
-| CV scripts | `data.table`, `ASRgenomics`, `cluster`, and `asreml` with a valid VSNi license |
+| CV scripts | `data.table`, `cluster`, plus either `asreml` and `ASRgenomics`, or open-source `BGLR` |
 
-The repository’s GitHub Actions workflow parses every `.R` file and runs
-synthetic numeric, HapMap, and VCF reader tests on each push and pull
-request. This catches syntax errors and genotype-format regressions
-without requiring ASReml or private data. A full numerical run still
-requires the remaining packages, license, and representative input data.
+The repository’s GitHub Actions workflow installs BGLR and runs the
+open-source tests on each push and pull request without requiring ASReml
+or private data. ASReml analyses still need to be tested in a licensed
+environment.
 
 ## Reproducibility and safe sharing
 
-- `base_seed`, `qc_seed`, `cluster_seed`, `grm_strata_seed`, `ga_seed`,
-  and `random_seed` make fold assignment, imputation, clustering,
-  optimization, and random benchmarks reproducible for fixed inputs and
-  package versions.
+- `base_seed`, `bglr_seed`, `qc_seed`, `cluster_seed`,
+  `grm_strata_seed`, `ga_seed`, and `random_seed` make fold assignment,
+  Bayesian sampling, imputation, clustering, optimization, and random
+  benchmarks reproducible for fixed inputs and package versions.
 - Each run-info file records the settings, normalized input paths, input
   counts, and
   [`sessionInfo()`](https://rdrr.io/r/utils/sessionInfo.html).
@@ -428,7 +445,7 @@ redistributed here.
 ### Pre-release smoke test
 
 Run this once on a small, representative copy of your real data in the
-same R and ASReml environment your colleagues will use:
+same R and model-engine environment your colleagues will use:
 
 1.  Set `n_iterations <- 2`, `k_folds <- 2`, and use a temporary
     `run_label` for repeated CV.
@@ -440,9 +457,11 @@ same R and ASReml environment your colleagues will use:
     the selected IDs are candidates, are unique, and are disjoint from
     the targets. Then restore the production settings.
 4.  Run the relevant GBLUP script and confirm that every expected output
-    is present and `Converged` is 1 for every fit. For repeated CV,
-    `N_iter` should be 2 for the principal metrics; fixed-split output
-    has one iteration.
+    is present. For ASReml, `Converged` must be 1 for every fit. For
+    BGLR, first use a short diagnostic chain retaining at least 100
+    samples, then restore production MCMC settings and assess chain
+    stability. For repeated CV, `N_iter` should be 2 for the principal
+    metrics; fixed-split output has one iteration.
 5.  Check that prediction row counts and genotype/environment IDs match
     the inputs. In fixed-split mode, verify `_split_ids.csv` against the
     optimizer files.
@@ -644,14 +663,17 @@ without marker weights.
 ### Inputs
 
 - The GRM from `grm_builder.R`, or a compatible GRM from another source.
-- A table of stage-1 BLUEs, with BLUE weights passed to
-  `asreml(weights = )`:
+- A table of stage-1 BLUEs. ASReml receives inverse-variance weights
+  directly; BGLR receives their square roots because BGLR defines
+  residual variance as inversely proportional to its squared weight:
   - The weight column (`weight_col`), for example Smith weights, is used
     where it has a value.
   - Where it has none, the weight is 1/SE^2, from the SE column
     (`se_col`).
   - A row with a trait value but neither a weight nor an SE stops the
-    run.
+    run. GSPip converts BGLR’s weighted internal fitted values,
+    posterior SDs, and RKHS effects back to the original trait scale
+    before calculating or exporting results.
 - Rows with no trait value are kept and predicted. They do not
   contribute to the fit or to the metrics.
 - `gblup_cv_single.R` only: `weight_col <- NULL` means no BLUE weights,
@@ -708,10 +730,12 @@ Example for `gblup_cv_gxe.R`, one row per genotype x environment:
 
 ### Models
 
-| Script | Model |
+| Engine and script | Model |
 |----|----|
-| `gblup_cv_single.R` | y = mu + g + r + e |
-| `gblup_cv_gxe.R` | y = mu + E + g + r + gE + rE + e, with environment E fixed |
+| ASReml single | y = mu + g + r + e |
+| ASReml G × E | y = mu + E + g + r + gE + rE + e |
+| BGLR single | y = mu + g + e, with the GRM as an RKHS kernel |
+| BGLR G × E | y = mu + E + g + gE + e, with genomic main and G × E RKHS kernels |
 
 | Term | Distribution | Included |
 |----|----|----|
@@ -721,9 +745,10 @@ Example for `gblup_cv_gxe.R`, one row per genotype x environment:
 | rE, non-marker G x E | N(0, I Vre) | G x E script, if `nonmarker_effects <- TRUE` |
 | e, stage-1 error | N(0, diag(1/w) s) | Always |
 
-With `fix_stage1_error <- TRUE`, s = 1, so the stage-1 error variances
-are fixed at 1/w. The terms r and rE hold genetic variation the markers
-do not capture.
+With ASReml and `fix_stage1_error <- TRUE`, s = 1, so stage-1 error
+variances are fixed at 1/w. The terms r and rE hold variation the
+markers do not capture. BGLR requires `fix_stage1_error <- FALSE` and
+`nonmarker_effects <- FALSE`; it estimates the posterior residual scale.
 
 ### Evaluation modes
 
@@ -753,7 +778,7 @@ derived genomic clusters are used as the strata.
 | `_summary.csv` | Mean and SD of each metric across iterations |
 | `_cv_predictions.csv` | Out-of-sample GEBV per genotype, per iteration, and their mean. Single: mu + g. G x E: mu + mean of E + g. Under CV2, averaged over the folds where a BLUE of the genotype was held out |
 | `_cv_predictions_by_env.csv` | G x E only: observed BLUE and out-of-sample prediction for each row |
-| `_train_predictions.csv`, `_train_se.csv` | In-sample predictions of the `vm` term and their SE, averaged over the folds where the genotype was in training. Not for assessing predictive performance |
+| `_train_predictions.csv`, `_train_se.csv` | In-sample genomic predictions and uncertainty, averaged over training folds. ASReml reports the `vm` effect and its SE; BGLR reports the genomic posterior mean and posterior SD of the fitted value. Not for assessing predictive performance |
 | `_intercepts.csv` | Intercept of each fitted model |
 | `_run_info.txt` | Settings, input checks and package versions |
 | `_split_ids.csv` | Only in fixed-split mode: every included genotype and its training or target role |
@@ -785,6 +810,11 @@ derived genomic clusters are used as the strata.
 | `PA_CV_within_*` | Pooled, within one supplied or GRM-derived stratum, when at least `min_stratum_n` genotypes have usable observed/out-of-sample prediction pairs |
 | `Untested_val_rows` | G x E only: held-out BLUEs whose genotype has no BLUE in training |
 | `Converged` | 1 if ASReml reported convergence, otherwise 0 |
+| `Vg_posterior`, `Vge_posterior`, `Residual_scale_posterior`, `Ve_posterior` | BGLR posterior means; `Vge_posterior` is present only for G × E |
+| `PVE_posterior` | BGLR posterior plug-in PVE calculated from posterior mean variance components and GRM scale |
+| `Heritability_posterior` | BGLR single-environment posterior plug-in heritability |
+| `Heritability_genotype_mean_posterior` | BGLR G × E genotype-mean approximation, averaging G × E and residual contributions over training environments |
+| `DIC`, `MCMC_retained` | BGLR deviance information criterion and number of retained posterior samples |
 
 Correlations and RMSE count each BLUE equally: BLUE weights are not used
 in them.

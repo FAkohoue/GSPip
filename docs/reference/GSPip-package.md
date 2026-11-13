@@ -1,7 +1,8 @@
 # GSPip: genomic selection pipeline utilities
 
 GSPip provides a validated GRM-construction API and editable workflow
-templates for training-population optimization and GBLUP evaluation.
+templates for training-population optimization and GBLUP evaluation with
+either ASReml-R or BGLR.
 
 ## See also
 

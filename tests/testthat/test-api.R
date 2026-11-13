@@ -11,9 +11,9 @@ test_that("the complete programmatic API is exported", {
 test_that("analysis functions expose required file arguments", {
   expect_true(all(c("grm_file", "output_dir") %in%
                     names(formals(optimize_training_population))))
-  expect_true(all(c("grm_file", "pheno_file", "output_dir") %in%
+  expect_true(all(c("grm_file", "pheno_file", "output_dir", "engine") %in%
                     names(formals(run_gblup_single))))
-  expect_true(all(c("grm_file", "pheno_file", "output_dir") %in%
+  expect_true(all(c("grm_file", "pheno_file", "output_dir", "engine") %in%
                     names(formals(run_gblup_gxe))))
 })
 
