@@ -1,0 +1,21 @@
+File,Rows,Purpose
+inst/extdata/example_genotypes_numeric.csv,240,Numeric genotype input for grm_builder.R
+inst/extdata/example_genotypes.hmp.txt,240,HapMap genotype input for grm_builder.R
+inst/extdata/example_genotypes.vcf,240,VCF genotype input for grm_builder.R
+inst/extdata/example_marker_weights.csv,240,Optional external marker weights
+inst/extdata/example_BLUEs_single.csv,120,One BLUE per genotype for gblup_cv_single.R
+inst/extdata/example_BLUEs_gxe.csv,360,One BLUE per genotype x environment for gblup_cv_gxe.R
+inst/extdata/example_candidate_ids.csv,90,Optional STPGA candidate IDs
+inst/extdata/example_target_ids.csv,30,STPGA targets or fixed-split targets
+inst/extdata/example_grm.csv,120,Ready-to-use illustrative GRM
+inst/extdata/example_simulation_truth.csv,240,Known simulated QTL effects (validation only)
+data/gs_example_geno.rda,120,R-native genotype matrix
+data/gs_example_marker_map.rda,240,R-native marker map
+data/gs_example_marker_weights.rda,240,R-native marker-weight table
+data/gs_example_blues_single.rda,120,R-native single-environment BLUE table
+data/gs_example_blues_gxe.rda,360,R-native G x E BLUE table
+data/gs_example_candidate_ids.rda,90,R-native candidate-ID table
+data/gs_example_target_ids.rda,30,R-native target-ID table
+data/gs_example_grm.rda,120,R-native genomic relationship matrix
+data/gs_example_truth.rda,240,R-native simulation truth
+data/gs_example_all.rda,9,Convenience list containing every R-native object

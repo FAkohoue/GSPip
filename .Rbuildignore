@@ -1,0 +1,11 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^\.github$
+^grm_builder\.R$
+^optimize_training_population\.R$
+^gblup_cv_single\.R$
+^gblup_cv_gxe\.R$
+^data-raw$
+^scripts$
+^_pkgdown\.yml$
+^docs$

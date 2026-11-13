@@ -1,0 +1,42 @@
+url: https://FAkohoue.github.io/GSPip/
+
+template:
+  bootstrap: 5
+
+home:
+  title: GSPip
+  description: >
+    Genomic selection utilities for genotype quality control, genomic
+    relationship matrices, training-population optimization, and GBLUP
+    evaluation.
+
+navbar:
+  structure:
+    left: [reference]
+    right: [search, github]
+  components:
+    github:
+      icon: fa-github
+      href: https://github.com/FAkohoue/GSPip
+      aria-label: GitHub repository
+
+reference:
+  - title: Genomic relationship matrices
+    contents:
+      - build_grm
+  - title: Training-population optimization
+    contents:
+      - optimize_training_population
+  - title: GBLUP evaluation
+    contents:
+      - run_gblup_single
+      - run_gblup_gxe
+  - title: Workflow templates
+    contents:
+      - gspip_script
+  - title: Example data
+    contents:
+      - starts_with("gs_example_")
+  - title: Package overview
+    contents:
+      - GSPip-package

@@ -1,0 +1,38 @@
+Package: GSPip
+Type: Package
+Title: Genomic Selection Pipeline Utilities
+Version: 0.1.0
+Authors@R: person(
+    "GSPip", "Development Team",
+    email = "akohoue.f@gmail.com",
+    role = c("aut", "cre")
+  )
+Description: Reads numeric, HapMap, and VCF marker data, performs auditable
+    marker and sample quality control, supports several missing-genotype
+    strategies including external Beagle imputation, and constructs genomic
+    relationship matrices with optional marker weights. Programmatic APIs
+    support training-population optimization and GBLUP evaluation with or
+    without genotype-by-environment effects.
+URL: https://FAkohoue.github.io/GSPip/,
+    https://github.com/FAkohoue/GSPip
+BugReports: https://github.com/FAkohoue/GSPip/issues
+License: file LICENSE
+Encoding: UTF-8
+LazyData: true
+Depends:
+    R (>= 4.2.0)
+Imports:
+    AGHmatrix,
+    ASRgenomics,
+    cluster,
+    data.table,
+    stats,
+    utils
+Suggests:
+    asreml,
+    rrBLUP,
+    STPGA,
+    testthat (>= 3.0.0)
+SystemRequirements: Java (optional, for Beagle imputation)
+Config/testthat/edition: 3
+Config/roxygen2/version: 8.0.0
