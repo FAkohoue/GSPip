@@ -12,9 +12,12 @@ home:
 
 navbar:
   structure:
-    left: [reference]
+    left: [tutorial, reference]
     right: [search, github]
   components:
+    tutorial:
+      text: Tutorial
+      href: articles/GSPip-workflow.html
     github:
       icon: fa-github
       href: https://github.com/FAkohoue/GSPip
