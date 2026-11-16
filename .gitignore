@@ -5,3 +5,4 @@
 *.Rcheck/
 *.tar.gz
 check/
+.empirical-test

@@ -62,30 +62,43 @@ test_that("single-environment BGLR backend completes a small CV run", {
     pheno_path, row.names = FALSE
   )
 
-  result <- run_gblup_single(
-    grm_file = grm_path,
-    pheno_file = pheno_path,
-    output_dir = out,
-    engine = "bglr",
-    run_label = "small",
-    trait_col = "Trait",
-    strata_col = NULL,
-    weight_col = NULL,
-    fix_stage1_error = FALSE,
-    nonmarker_effects = FALSE,
-    k_folds = 2L,
-    n_iterations = 1L,
-    within_stratum_pa = FALSE,
-    bglr_n_iter = 300L,
-    bglr_burn_in = 100L,
-    bglr_thin = 2L,
-    bglr_seed = 17L
+  expect_warning(
+    result <- run_gblup_single(
+      grm_file = grm_path,
+      pheno_file = pheno_path,
+      output_dir = out,
+      engine = "bglr",
+      run_label = "small",
+      trait_col = "Trait",
+      strata_col = NULL,
+      weight_col = NULL,
+      fix_stage1_error = FALSE,
+      nonmarker_effects = FALSE,
+      accuracy_heritability = 0.5,
+      k_folds = 2L,
+      n_iterations = 1L,
+      within_stratum_pa = FALSE,
+      bglr_n_iter = 300L,
+      bglr_burn_in = 100L,
+      bglr_thin = 2L,
+      bglr_seed = 17L
+    ),
+    "Equal weights"
   )
 
   expect_s3_class(result, "gspip_gblup_single")
   expect_identical(result$engine, "bglr")
   expect_true(all(is.finite(result$cv_predictions[, 1])))
   expect_true("Vg_posterior" %in% result$metrics$Metric)
+  expect_false(any(result$metrics$Metric %in% c(
+    "Converged", "GOF", "Heritability_min", "Heritability_max",
+    "Heritability_min_SE", "Heritability_max_SE", "Residual_scale",
+    "Residual_scale_posterior"
+  )))
+  pooled <- result$summary[result$summary$Level == "pooled", ]
+  pa <- pooled$Mean[pooled$Metric == "PA_CV_allfolds"]
+  accuracy <- pooled$Mean[pooled$Metric == "Accuracy_CV_allfolds"]
+  expect_equal(accuracy, pa / sqrt(0.5), tolerance = 1e-8)
   expect_true(file.exists(file.path(out, "small_metrics.csv")))
 })
 
@@ -122,6 +135,7 @@ test_that("G x E BGLR backend completes a small CV1 run", {
     weight_col = "Weight",
     fix_stage1_error = FALSE,
     nonmarker_effects = FALSE,
+    env_h2 = 0.5,
     cv_scheme = "CV1",
     k_folds = 2L,
     n_iterations = 1L,
@@ -136,5 +150,14 @@ test_that("G x E BGLR backend completes a small CV1 run", {
   expect_identical(result$engine, "bglr")
   expect_true(all(is.finite(result$predictions_by_environment$Mean)))
   expect_true("Vge_posterior" %in% result$metrics$Metric)
+  expect_false(any(result$metrics$Metric %in% c(
+    "Converged", "GOF", "Heritability_min", "Heritability_max",
+    "Heritability_min_SE", "Heritability_max_SE", "Residual_scale",
+    "Residual_scale_posterior"
+  )))
+  pooled <- result$summary[result$summary$Level == "pooled", ]
+  pa <- pooled$Mean[pooled$Metric == "PA_CV_allfolds"]
+  accuracy <- pooled$Mean[pooled$Metric == "Accuracy_CV_allfolds"]
+  expect_equal(accuracy, pa / sqrt(0.5), tolerance = 1e-8)
   expect_true(file.exists(file.path(out, "small_gxe_metrics.csv")))
 })

@@ -78,6 +78,7 @@ and genomic-by-environment RKHS kernels.</p>
 <span>  min_stratum_n <span class="op">=</span> <span class="fl">10L</span>,</span>
 <span>  overwrite_outputs <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  asreml_workspace <span class="op">=</span> <span class="fl">3.2e+08</span>,</span>
+<span>  asreml_ai_sing <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  bglr_n_iter <span class="op">=</span> <span class="fl">12000L</span>,</span>
 <span>  bglr_burn_in <span class="op">=</span> <span class="fl">2000L</span>,</span>
 <span>  bglr_thin <span class="op">=</span> <span class="fl">10L</span>,</span>
@@ -136,7 +137,9 @@ and genomic-by-environment RKHS kernels.</p>
 
 
 <dt id="arg-env-h-">env_h2<a class="anchor" aria-label="anchor" href="#arg-env-h-"></a></dt>
-<dd><p>Optional named heritability vector by environment.</p></dd>
+<dd><p>Optional stage-1 heritability from a mixed model with genotype
+fitted as random: one scalar for all environments or a named vector by
+environment. Used in preference to GBLUP heritability for accuracy.</p></dd>
 
 
 <dt id="arg-cv-scheme">cv_scheme<a class="anchor" aria-label="anchor" href="#arg-cv-scheme"></a></dt>
@@ -165,6 +168,12 @@ and genomic-by-environment RKHS kernels.</p>
 
 <dt id="arg-asreml-workspace">asreml_workspace<a class="anchor" aria-label="anchor" href="#arg-asreml-workspace"></a></dt>
 <dd><p>Workspace passed to ASReml-R.</p></dd>
+
+
+<dt id="arg-asreml-ai-sing">asreml_ai_sing<a class="anchor" aria-label="anchor" href="#arg-asreml-ai-sing"></a></dt>
+<dd><p>Permit ASReml-R to continue after a singular Average
+Information matrix. Leave `FALSE` unless ASReml reports this specific
+boundary-fit problem; results then require careful review.</p></dd>
 
 
 <dt id="arg-bglr-n-iter-bglr-burn-in-bglr-thin">bglr_n_iter, bglr_burn_in, bglr_thin<a class="anchor" aria-label="anchor" href="#arg-bglr-n-iter-bglr-burn-in-bglr-thin"></a></dt>

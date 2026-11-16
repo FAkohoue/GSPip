@@ -32,6 +32,9 @@ grm_strata_seed         <- 123L
 # Model and accuracy
 fix_stage1_error  <- TRUE
 nonmarker_effects <- TRUE
+# Strongly recommended: stage-1 heritability from a mixed model with genotype random.
+# Use one value for all environments or c(E1 = 0.40, E2 = 0.55).
+# NULL falls back to the GBLUP heritability when it is estimable.
 env_h2            <- NULL
 # For engine <- "bglr", use:
 # fix_stage1_error <- FALSE; nonmarker_effects <- FALSE
@@ -50,6 +53,9 @@ min_stratum_n     <- 10L
 # Run
 overwrite_outputs <- FALSE
 asreml_workspace  <- 32e07
+# Use TRUE only when ASReml reports a singular Average Information matrix;
+# inspect boundary variance estimates carefully when continuing such a fit.
+asreml_ai_sing    <- FALSE
 bglr_n_iter        <- 12000L
 bglr_burn_in       <- 2000L
 bglr_thin          <- 10L
@@ -88,6 +94,7 @@ result <- run_gblup_gxe(
   min_stratum_n = min_stratum_n,
   overwrite_outputs = overwrite_outputs,
   asreml_workspace = asreml_workspace,
+  asreml_ai_sing = asreml_ai_sing,
   bglr_n_iter = bglr_n_iter,
   bglr_burn_in = bglr_burn_in,
   bglr_thin = bglr_thin,

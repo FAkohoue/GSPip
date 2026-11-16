@@ -65,6 +65,7 @@ RKHS regression with the supplied GRM as its kernel.</p>
 <span>  grm_strata_seed <span class="op">=</span> <span class="fl">123L</span>,</span>
 <span>  fix_stage1_error <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  nonmarker_effects <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  accuracy_heritability <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  k_folds <span class="op">=</span> <span class="fl">5L</span>,</span>
 <span>  n_iterations <span class="op">=</span> <span class="fl">50L</span>,</span>
 <span>  base_seed <span class="op">=</span> <span class="fl">0L</span>,</span>
@@ -75,6 +76,7 @@ RKHS regression with the supplied GRM as its kernel.</p>
 <span>  min_stratum_n <span class="op">=</span> <span class="fl">10L</span>,</span>
 <span>  overwrite_outputs <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  asreml_workspace <span class="op">=</span> <span class="fl">3.2e+08</span>,</span>
+<span>  asreml_ai_sing <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  bglr_n_iter <span class="op">=</span> <span class="fl">12000L</span>,</span>
 <span>  bglr_burn_in <span class="op">=</span> <span class="fl">2000L</span>,</span>
 <span>  bglr_thin <span class="op">=</span> <span class="fl">10L</span>,</span>
@@ -133,6 +135,12 @@ RKHS regression with the supplied GRM as its kernel.</p>
 <dd><p>Include the non-marker genotype effect.</p></dd>
 
 
+<dt id="arg-accuracy-heritability">accuracy_heritability<a class="anchor" aria-label="anchor" href="#arg-accuracy-heritability"></a></dt>
+<dd><p>Optional stage-1 heritability from a mixed model
+with genotype fitted as random. Used in preference to GBLUP heritability
+when calculating accuracy.</p></dd>
+
+
 <dt id="arg-k-folds-n-iterations-base-seed">k_folds, n_iterations, base_seed<a class="anchor" aria-label="anchor" href="#arg-k-folds-n-iterations-base-seed"></a></dt>
 <dd><p>Cross-validation controls.</p></dd>
 
@@ -155,6 +163,12 @@ RKHS regression with the supplied GRM as its kernel.</p>
 
 <dt id="arg-asreml-workspace">asreml_workspace<a class="anchor" aria-label="anchor" href="#arg-asreml-workspace"></a></dt>
 <dd><p>Workspace passed to ASReml-R.</p></dd>
+
+
+<dt id="arg-asreml-ai-sing">asreml_ai_sing<a class="anchor" aria-label="anchor" href="#arg-asreml-ai-sing"></a></dt>
+<dd><p>Permit ASReml-R to continue after a singular Average
+Information matrix. Leave `FALSE` unless ASReml reports this specific
+boundary-fit problem; results then require careful review.</p></dd>
 
 
 <dt id="arg-bglr-n-iter-bglr-burn-in-bglr-thin">bglr_n_iter, bglr_burn_in, bglr_thin<a class="anchor" aria-label="anchor" href="#arg-bglr-n-iter-bglr-burn-in-bglr-thin"></a></dt>

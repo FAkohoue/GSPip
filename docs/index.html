@@ -156,7 +156,7 @@
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/source.html" class="external-link">source</a></span><span class="op">(</span><span class="st">"data-raw/generate_example_data.R"</span><span class="op">)</span></span></code></pre></div>
 <p>The generator uses base R, protects existing outputs by default, and accepts <code>GS_EXAMPLE_OVERWRITE=true</code> for deliberate non-interactive regeneration.</p>
 <blockquote>
-<p>[!IMPORTANT] <strong>Check for a weight or SE column before running cross-validation.</strong> The two CV scripts do not behave the same way when both columns are absent. Do not create an artificial <code>Weight = 1</code> column while keeping <code>fix_stage1_error &lt;- TRUE</code>; that would force the residual variance to 1 rather than estimate it from the data.</p>
+<p>[!IMPORTANT] <strong>Check for a weight or SE column before running cross-validation.</strong> GSPip is a two-stage workflow, so stage-1 precision information should be supplied whenever it is available. Do not create an artificial <code>Weight = 1</code> column while keeping <code>fix_stage1_error &lt;- TRUE</code>; that would force the residual variance to 1 rather than estimate it from the data.</p>
 </blockquote>
 <div class="section level3">
 <h3 id="if-the-data-has-no-weight-or-se-column">If the data has no Weight or SE column<a class="anchor" aria-label="anchor" href="#if-the-data-has-no-weight-or-se-column"></a>
@@ -176,29 +176,29 @@
 <tr>
 <td><code>gblup_cv_single.R</code></td>
 <td>Yes</td>
-<td>Set <code>weight_col &lt;- NULL</code>, <code>fix_stage1_error &lt;- FALSE</code>, and <code>nonmarker_effects &lt;- FALSE</code>
-</td>
+<td>Equal weights are used, with a prominent warning</td>
 </tr>
 <tr>
 <td><code>gblup_cv_gxe.R</code></td>
-<td>No</td>
-<td>Supply a valid weight column or SE column. The script stops before model fitting if both are absent</td>
+<td>Yes</td>
+<td>Equal weights are used, with a prominent warning</td>
 </tr>
 </tbody>
 </table>
-<p>For the single-genotype script, the no-weight configuration is:</p>
+<p>For either script, the explicit no-weight configuration is:</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">weight_col</span>        <span class="op">&lt;-</span> <span class="cn">NULL</span></span>
 <span><span class="va">fix_stage1_error</span>  <span class="op">&lt;-</span> <span class="cn">FALSE</span></span>
 <span><span class="va">nonmarker_effects</span> <span class="op">&lt;-</span> <span class="cn">FALSE</span></span></code></pre></div>
-<p>This gives every observed BLUE equal weight and lets the selected engine estimate the residual variance. The <code>se_col</code> setting is ignored. The non-marker effect must be disabled because, with one record per genotype and an estimated residual scale, it cannot be separated from the residual.</p>
-<p>For the G × E script, at least one real precision measure is required:</p>
+<p>This gives every observed BLUE equal weight and lets the selected engine estimate the residual variance. If <code>weight_col</code> is left at its default but neither the Weight nor SE column exists, GSPip makes the same fallback automatically and issues a prominent warning. In this fallback, <code>fix_stage1_error</code> and <code>nonmarker_effects</code> are disabled because the stage-1 error variance is unknown.</p>
+<p>For both scripts, stage-1 Weight or SE is strongly recommended. When neither column is available, GSPip uses equal weights, estimates the residual variance, and disables non-marker effects because they cannot be separated from residual error in that configuration. This fallback keeps the analysis runnable but is less informative than a properly weighted two-stage analysis.</p>
+<p>When precision information is available:</p>
 <ul>
 <li>If the weight column exists, its positive finite values are used.</li>
 <li>If a weight is missing but the SE is available, the script uses <code>1 / SE^2</code> for that row.</li>
 <li>The entire weight column may be absent when the SE column is present, and vice versa.</li>
 <li>A row without a trait value needs neither a weight nor an SE because it does not contribute to model fitting or metrics.</li>
-<li>If an observed row has neither a valid weight nor a valid SE, the script stops and identifies the problem before fitting any model.</li>
+<li>If the file contains precision columns but an observed row has neither a valid weight nor a valid SE, the script stops and identifies the problem before fitting any model.</li>
 </ul>
 </div>
 <div class="section level3">
@@ -430,9 +430,17 @@
 <li>
 <code>data/</code> and <code>results/</code> are ignored by Git to reduce the risk of publishing private inputs or large generated files. Review <code>git status</code> before every push.</li>
 <li>Cross-validation metrics can legitimately be <code>NA</code> when a validation subset has too few usable observations, no variation, a zero trait mean, or undefined Cullis heritability. The summary’s <code>N_iter</code> reports how many finite iteration-level values contributed.</li>
-<li>Non-converged ASReml fits are retained and flagged by <code>Converged = 0</code>; review them before interpreting the summary.</li>
+<li>Non-converged ASReml fits trigger an immediate warning; do not interpret results from a warned fit.</li>
 </ul>
+<div class="section level3">
+<h3 id="asreml-singular-average-information-matrices">ASReml singular Average Information matrices<a class="anchor" aria-label="anchor" href="#asreml-singular-average-information-matrices"></a>
+</h3>
+<p>Leave <code>asreml_ai_sing &lt;- FALSE</code> for routine analyses. If ASReml stops with a singular Average Information (AI) matrix, first examine whether a variance component is effectively zero, the model is over-parameterized, or the data do not identify all requested effects. If continuing a boundary fit is scientifically defensible, rerun explicitly with:</p>
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">asreml_ai_sing</span> <span class="op">&lt;-</span> <span class="cn">TRUE</span></span></code></pre></div>
+<p>GSPip applies this ASReml option only for the duration of that function call and restores the user’s previous ASReml setting on exit. It also obtains ASReml predictions in the original model fit, avoiding a hidden second fit during <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code>. Warnings about singular or negative-definite AI matrices remain visible. A completed fit does not by itself make a boundary solution reliable: inspect the variance components, warnings, heritability, and prediction results, and report that <code>asreml_ai_sing = TRUE</code> was used.</p>
 <p>Before making the repository public, add the license and citation information appropriate for your organization and confirm that your ASReml license permits the intended use. ASReml itself is not redistributed here.</p>
+</div>
 <div class="section level3">
 <h3 id="pre-release-smoke-test">Pre-release smoke test<a class="anchor" aria-label="anchor" href="#pre-release-smoke-test"></a>
 </h3>
@@ -441,7 +449,7 @@
 <li>Set <code>n_iterations &lt;- 2</code>, <code>k_folds &lt;- 2</code>, and use a temporary <code>run_label</code> for repeated CV.</li>
 <li>Run the GRM script and confirm that <code>_grm_info.txt</code> reports an invertible matrix, a positive smallest eigenvalue, and plausible diagonal/off-diagonal means.</li>
 <li>If using optimization, first use a small <code>training_size</code>, <code>ga_iterations</code>, <code>ga_replicates</code>, and <code>random_replicates</code>. Confirm the selected IDs are candidates, are unique, and are disjoint from the targets. Then restore the production settings.</li>
-<li>Run the relevant GBLUP script and confirm that every expected output is present. For ASReml, <code>Converged</code> must be 1 for every fit. For BGLR, first use a short diagnostic chain retaining at least 100 samples, then restore production MCMC settings and assess chain stability. For repeated CV, <code>N_iter</code> should be 2 for the principal metrics; fixed-split output has one iteration.</li>
+<li>Run the relevant GBLUP script and confirm that every expected output is present. For ASReml, investigate every non-convergence warning; if a singular-AI stop leads you to use <code>asreml_ai_sing &lt;- TRUE</code>, also inspect all boundary components and captured warnings. For BGLR, first use a short diagnostic chain retaining at least 100 samples, then restore production MCMC settings and assess chain stability. For repeated CV, <code>N_iter</code> should be 2 for the principal metrics; fixed-split output has one iteration.</li>
 <li>Check that prediction row counts and genotype/environment IDs match the inputs. In fixed-split mode, verify <code>_split_ids.csv</code> against the optimizer files.</li>
 <li>Run the same script again without changing <code>run_label</code>; it should stop before overwriting any result.</li>
 <li>Restore the intended fold, iteration, optimizer, and run-label settings before the production run.</li>
@@ -666,10 +674,10 @@
 <h3 id="marker-weights">Marker weights<a class="anchor" aria-label="anchor" href="#marker-weights"></a>
 </h3>
 <p>Leave both weight settings <code>NULL</code> for AGHmatrix’s equal marker weights. Numeric input may name an inline column:</p>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">marker_weight_col</span> <span class="op">&lt;-</span> <span class="st">"MarkerWeight"</span></span></code></pre></div>
 <p>All three formats may instead use a separate table:</p>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">marker_weights_file</span>      <span class="op">&lt;-</span> <span class="st">"marker_weights.csv"</span></span>
 <span><span class="va">marker_weights_id_col</span>    <span class="op">&lt;-</span> <span class="st">"MarkerID"</span></span>
 <span><span class="va">marker_weights_value_col</span> <span class="op">&lt;-</span> <span class="st">"Weight"</span></span></code></pre></div>
@@ -979,14 +987,11 @@
 <ul>
 <li>The weight column (<code>weight_col</code>), for example Smith weights, is used where it has a value.</li>
 <li>Where it has none, the weight is 1/SE^2, from the SE column (<code>se_col</code>).</li>
-<li>A row with a trait value but neither a weight nor an SE stops the run. GSPip converts BGLR’s weighted internal fitted values, posterior SDs, and RKHS effects back to the original trait scale before calculating or exporting results.</li>
+<li>If precision columns exist, a row with a trait value but neither a weight nor an SE stops the run; partial precision information is not silently replaced. GSPip converts BGLR’s weighted internal fitted values, posterior SDs, and RKHS effects back to the original trait scale before calculating or exporting results.</li>
 </ul>
 </li>
 <li>Rows with no trait value are kept and predicted. They do not contribute to the fit or to the metrics.</li>
-<li>
-<code>gblup_cv_single.R</code> only: <code>weight_col &lt;- NULL</code> means no BLUE weights, and the SE column is ignored. This also needs <code>fix_stage1_error &lt;- FALSE</code> and <code>nonmarker_effects &lt;- FALSE</code>. The residual variance is then estimated, so the analysis no longer treats the stage-1 errors as known.</li>
-<li>
-<code>gblup_cv_gxe.R</code> does not support a no-weight analysis. It requires a weight or SE for every row with an observed trait value.</li>
+<li>In either CV script, <code>weight_col &lt;- NULL</code> explicitly requests equal weights and ignores <code>se_col</code>. If neither the named Weight nor SE column exists, equal weights are also selected automatically. GSPip warns, estimates the residual variance, and disables fixed stage-1 error and non-marker effects for that run.</li>
 <li>Every genotype in the BLUE table must be in the GRM. Genotypes in the GRM with no row in the BLUE table are allowed, and get NA in the prediction tables.</li>
 </ul>
 <p>Example for <code>gblup_cv_single.R</code>, one row per genotype:</p>
@@ -1372,11 +1377,6 @@
 <td>REML estimates from the training set of the fold</td>
 </tr>
 <tr>
-<td><code>Residual_scale</code></td>
-<td>s. Equals 1 when <code>fix_stage1_error &lt;- TRUE</code>
-</td>
-</tr>
-<tr>
 <td><code>Ve</code></td>
 <td>s × mean(1/w): the mean stage-1 error variance. With <code>weight_col &lt;- NULL</code>, the residual variance</td>
 </tr>
@@ -1386,30 +1386,15 @@
 </tr>
 <tr>
 <td><code>Heritability</code></td>
-<td>Cullis heritability: 1 − avsed² / (2 varG), with avsed the mean SED from <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> on the <code>vm</code> term, and varG = Vg × (mean diagonal − mean off-diagonal of G). G x E: on a genotype-mean basis</td>
+<td>Cullis heritability: 1 − avsed² / (2 Vg), with avsed the mean SED from the <code>vm</code> predictions. G x E: on a genotype-mean basis</td>
 </tr>
 <tr>
-<td><code>Heritability_min</code></td>
-<td>Same, with the largest SED</td>
+<td><code>Heritability_SE</code></td>
+<td>Delta-method SE from <code>vpredict()</code>. Covers uncertainty in Vg only; the mean SED is treated as a constant</td>
 </tr>
 <tr>
-<td><code>Heritability_max</code></td>
-<td>Same, with the smallest SED</td>
-</tr>
-<tr>
-<td>
-<code>Heritability_SE</code>, <code>_min_SE</code>, <code>_max_SE</code>
-</td>
-<td>Delta-method SE from <code>vpredict()</code>. Covers uncertainty in Vg only; the SED is treated as a constant</td>
-</tr>
-<tr>
-<td><code>Heritability_unscaled</code></td>
-<td>1 − avsed² / (2 Vg), for reference. Not used for <code>Accuracy</code>
-</td>
-</tr>
-<tr>
-<td><code>GOF</code></td>
-<td>In-sample correlation of observed BLUEs with fitted values, including r. G x E: within environment, then averaged</td>
+<td><code>Boundary_fit</code></td>
+<td>1 when an estimated residual variance is less than 0.01% of the observed trait variance or an estimated variance component exceeds 100 times that variance; otherwise 0. Heritability and PVE are <code>NA</code> for such unstable fits. Accuracy remains available only when a stage-1 heritability was supplied</td>
 </tr>
 <tr>
 <td><code>PredictionAbility</code></td>
@@ -1417,7 +1402,7 @@
 </tr>
 <tr>
 <td><code>Accuracy</code></td>
-<td>PredictionAbility / √Heritability. G x E with <code>env_h2</code>: mean over environments of r_j / √h2_j</td>
+<td>PredictionAbility / √Heritability. The denominator preferentially uses user-supplied stage-1 heritability; GBLUP heritability is only a fallback. G x E with <code>env_h2</code>: mean over environments of r_j / √h2_j</td>
 </tr>
 <tr>
 <td><code>RMSE</code></td>
@@ -1450,12 +1435,8 @@
 <td>G x E only: held-out BLUEs whose genotype has no BLUE in training</td>
 </tr>
 <tr>
-<td><code>Converged</code></td>
-<td>1 if ASReml reported convergence, otherwise 0</td>
-</tr>
-<tr>
 <td>
-<code>Vg_posterior</code>, <code>Vge_posterior</code>, <code>Residual_scale_posterior</code>, <code>Ve_posterior</code>
+<code>Vg_posterior</code>, <code>Vge_posterior</code>, <code>Ve_posterior</code>
 </td>
 <td>BGLR posterior means; <code>Vge_posterior</code> is present only for G × E</td>
 </tr>

@@ -16,7 +16,9 @@
 #' @param grm_strata_max_clusters,grm_strata_n_pcs,grm_strata_seed GRM clustering controls.
 #' @param fix_stage1_error Fix the stage-1 residual scale to one.
 #' @param nonmarker_effects Include non-marker genotype and G by E effects.
-#' @param env_h2 Optional named heritability vector by environment.
+#' @param env_h2 Optional stage-1 heritability from a mixed model with genotype
+#'   fitted as random: one scalar for all environments or a named vector by
+#'   environment. Used in preference to GBLUP heritability for accuracy.
 #' @param cv_scheme Either `"CV1"` or `"CV2"`.
 #' @param k_folds,n_iterations,base_seed Cross-validation controls.
 #' @param evaluation_mode Either `"repeated_cv"` or `"fixed_split"`.
@@ -24,6 +26,9 @@
 #' @param within_stratum_pa,min_stratum_n Controls within-stratum prediction ability.
 #' @param overwrite_outputs Permit replacement of outputs with the same run label.
 #' @param asreml_workspace Workspace passed to ASReml-R.
+#' @param asreml_ai_sing Permit ASReml-R to continue after a singular Average
+#'   Information matrix. Leave `FALSE` unless ASReml reports this specific
+#'   boundary-fit problem; results then require careful review.
 #' @param bglr_n_iter,bglr_burn_in,bglr_thin BGLR MCMC controls.
 #' @param bglr_seed Seed used for BGLR sampling.
 #' @param bglr_R2 Proportion of response variance assigned to BGLR linear
@@ -47,6 +52,7 @@ run_gblup_gxe <- function(
     training_ids_file = NULL, target_ids_file = NULL,
     within_stratum_pa = TRUE, min_stratum_n = 10L,
     overwrite_outputs = FALSE, asreml_workspace = 32e07,
+    asreml_ai_sing = FALSE,
     bglr_n_iter = 12000L, bglr_burn_in = 2000L, bglr_thin = 10L,
     bglr_seed = 123L, bglr_R2 = 0.5, bglr_verbose = FALSE) {
   engine <- match.arg(engine, c("asreml", "bglr"))
@@ -69,16 +75,6 @@ run_gblup_gxe <- function(
     stop("Please install: ", paste(missing_pkgs, collapse = ", "), ".", engine_note,
          call. = FALSE)
   }
-  # Bind ASReml model-term constructors in the function environment so formulas
-  # can resolve them without attaching ASReml while the package is loaded.
-  if (engine == "asreml") {
-    asreml_namespace <- asNamespace("asreml")
-    vm  <- get("vm",  envir = asreml_namespace, inherits = FALSE)
-    ide <- get("ide", envir = asreml_namespace, inherits = FALSE)
-    idv <- get("idv", envir = asreml_namespace, inherits = FALSE)
-    rm(asreml_namespace)
-  }
-  
   #===============================================================================
   # FUNCTIONS
   #===============================================================================
@@ -124,15 +120,11 @@ run_gblup_gxe <- function(
       stop("run_label must be non-empty and cannot contain file-name separators or reserved characters.",
            call. = FALSE)
     }
-    if (is.null(weight_col)) {
-      stop("gblup_cv_gxe.R does not support weight_col <- NULL. Supply a real weight column or ",
-           "an SE column; see 'If the data has no Weight or SE column' in README.md.", call. = FALSE)
+    if (!all(vapply(list(id_col, trait_col, env_col, se_col), nonempty_string, logical(1))) ||
+        !all(vapply(list(strata_col, weight_col), nullable_string, logical(1)))) {
+      stop("Column settings must be non-empty names (strata_col and weight_col may be NULL).", call. = FALSE)
     }
-    if (!all(vapply(list(id_col, trait_col, env_col, weight_col, se_col),
-                    nonempty_string, logical(1))) || !nullable_string(strata_col)) {
-      stop("Column settings must be non-empty names (strata_col may be NULL).", call. = FALSE)
-    }
-    required_columns <- c(id_col, trait_col, env_col, weight_col, se_col)
+    required_columns <- c(id_col, trait_col, env_col, weight_col, if (!is.null(weight_col)) se_col)
     optional_columns <- c(strata_col)
     if (anyDuplicated(c(required_columns, optional_columns))) {
       stop("Column settings must refer to distinct columns.", call. = FALSE)
@@ -203,6 +195,7 @@ run_gblup_gxe <- function(
            call. = FALSE)
     }
     if (!scalar_logical(overwrite_outputs)) stop("overwrite_outputs must be TRUE or FALSE.", call. = FALSE)
+    if (!scalar_logical(asreml_ai_sing)) stop("asreml_ai_sing must be TRUE or FALSE.", call. = FALSE)
     if (engine == "asreml" &&
         (!is.numeric(asreml_workspace) || length(asreml_workspace) != 1L ||
          !is.finite(asreml_workspace) || asreml_workspace <= 0)) {
@@ -252,12 +245,19 @@ run_gblup_gxe <- function(
   # Weight where present, 1/SE^2 where missing
   resolve_weights <- function(pheno) {
     observed <- !is.na(pheno[[trait_col]])
+    if (is.null(weight_col)) {
+      warning("No Weight or SE supplied. Equal weights are being used; provide stage-1 Weight or SE whenever possible.",
+              call. = FALSE)
+      return(list(w = rep(1, nrow(pheno)), source = "equal weights (no Weight or SE supplied)",
+                  equal_weights = TRUE))
+    }
     has_w  <- weight_col %in% names(pheno)
     has_se <- se_col %in% names(pheno)
     if (!has_w && !has_se) {
-      stop("The G x E phenotype file has neither the weight column ('", weight_col,
-           "') nor the SE column ('", se_col, "'). This script requires at least one real ",
-           "precision measure and will not create artificial unit weights. See README.md.", call. = FALSE)
+      warning("The G x E phenotype file has no Weight or SE column. Equal weights are being used; provide stage-1 precision information whenever possible.",
+              call. = FALSE)
+      return(list(w = rep(1, nrow(pheno)), source = "equal weights (Weight and SE columns absent)",
+                  equal_weights = TRUE))
     }
     w <- rep(NA_real_, nrow(pheno))
     if (has_w) {
@@ -284,7 +284,8 @@ run_gblup_gxe <- function(
     }
     w[!observed] <- median(w[observed])  # No trait value: no effect on the fit
     list(w = w, source = sprintf("%d row(s) from '%s', %d row(s) as 1/SE^2 from '%s'",
-                                 sum(observed & !from_se), weight_col, sum(observed & from_se), se_col))
+                                 sum(observed & !from_se), weight_col, sum(observed & from_se), se_col),
+         equal_weights = FALSE)
   }
   
   derive_grm_strata <- function(G, k, max_k, n_pcs, seed) {
@@ -427,7 +428,8 @@ run_gblup_gxe <- function(
       warning("Stratum smaller than k_folds, so absent from some folds: ",
               paste(small, collapse = ", "), call. = FALSE)
     }
-    list(data = out, weight_source = weights$source, n_no_trait = n_no_trait)
+    list(data = out, weight_source = weights$source,
+         equal_weights = weights$equal_weights, n_no_trait = n_no_trait)
   }
   
   read_fixed_split <- function(training_path, target_path, phenotype_ids) {
@@ -457,17 +459,21 @@ run_gblup_gxe <- function(
     list(training = training, target = target)
   }
   
-  check_env_h2 <- function(h2, envs) {
-    if (is.null(h2)) return(invisible(NULL))
+  resolve_env_h2 <- function(h2, envs) {
+    if (is.null(h2)) return(NULL)
+    if (is.numeric(h2) && length(h2) == 1L && is.null(names(h2)) &&
+        is.finite(h2) && h2 > 0 && h2 <= 1) {
+      return(setNames(rep(h2, length(envs)), envs))
+    }
     if (!is.numeric(h2) || is.null(names(h2)) || anyNA(h2) || any(h2 <= 0 | h2 > 1) ||
         anyNA(names(h2)) || any(!nzchar(names(h2))) || anyDuplicated(names(h2))) {
-      stop("env_h2 must be a named numeric vector with values above 0 and up to 1.", call. = FALSE)
+      stop("env_h2 must be one value or a named vector with values above 0 and up to 1.", call. = FALSE)
     }
     absent <- setdiff(envs, names(h2))
     if (length(absent) > 0) stop("env_h2 has no value for: ", paste(absent, collapse = ", "), call. = FALSE)
     unknown <- setdiff(names(h2), envs)
     if (length(unknown) > 0) stop("env_h2 names not found in the data: ", paste(unknown, collapse = ", "), call. = FALSE)
-    invisible(NULL)
+    h2[envs]
   }
   
   # Cross-validation and metrics -------------------------------------------------
@@ -512,10 +518,10 @@ run_gblup_gxe <- function(
   mean_or_na <- function(x) if (any(is.finite(x))) mean(x[is.finite(x)]) else NA_real_
   mean_env_cor <- function(obs, pred, env) mean_or_na(env_cors(obs, pred, env))
   
-  # With env_h2: mean of r_j / sqrt(h2_j). Otherwise: mean r / sqrt(Cullis h2)
+  accuracy_h2_by_env <- NULL
   accuracy_metric <- function(obs, pred, env, cullis_h2) {
     r <- env_cors(obs, pred, env)
-    if (!is.null(env_h2)) return(mean_or_na(r / sqrt(env_h2[names(r)])))
+    if (!is.null(accuracy_h2_by_env)) return(mean_or_na(r / sqrt(accuracy_h2_by_env[names(r)])))
     if (is.finite(cullis_h2) && cullis_h2 > 0) mean_or_na(r) / sqrt(cullis_h2) else NA_real_
   }
   
@@ -557,9 +563,9 @@ run_gblup_gxe <- function(
   
   # ASReml outputs ----------------------------------------------------------------
   # asreml::vpredict() addresses Vg by position (V1, V2, ...); a mismatch stops the run
-  cullis_vpredict <- function(fit, sed, Vg_pos, G_scale, expected) {
-    if (!all(is.finite(c(sed, G_scale, expected))) || G_scale <= 0) return(NA_real_)
-    h2_formula <- as.formula(sprintf("h2 ~ 1 - ((%.15g^2) / (2 * %.15g * V%d))", sed, G_scale, Vg_pos),
+  cullis_vpredict <- function(fit, sed, Vg_pos, expected) {
+    if (!all(is.finite(c(sed, expected)))) return(NA_real_)
+    h2_formula <- as.formula(sprintf("h2 ~ 1 - ((%.15g^2) / (2 * V%d))", sed, Vg_pos),
                              env = globalenv())
     out <- as.data.frame(asreml::vpredict(fit, h2_formula))
     if (abs(out[1, "Estimate"] - expected) > 1e-6 * max(1, abs(expected))) {
@@ -569,44 +575,47 @@ run_gblup_gxe <- function(
     out[1, "SE"]
   }
   
-  # Cullis heritability with rescaled Vg: varG = Vg * (mean diagonal - mean off-diagonal)
-  cullis_heritability <- function(fit, pred, varcomp, G) {
+  empty_heritability_metrics <- function() {
+    c(Heritability = NA_real_, Heritability_SE = NA_real_)
+  }
+
+  boundary_fit <- function(residual_variance, components, observed) {
+    observed_variance <- stats::var(observed[is.finite(observed)])
+    residual_fraction <- residual_variance / observed_variance
+    component_fraction <- max(components, na.rm = TRUE) / observed_variance
+    list(
+      flag = !fix_stage1_error &&
+        ((is.finite(residual_fraction) && residual_fraction < 1e-4) ||
+         (is.finite(component_fraction) && component_fraction > 100)),
+      residual_fraction = residual_fraction,
+      component_fraction = component_fraction
+    )
+  }
+
+  cullis_heritability <- function(fit, pred, varcomp, boundary) {
     avsed <- as.data.frame(pred$avsed)[, 1]  # min, mean, max
-    if (length(avsed) < 3L || any(!is.finite(avsed[1:3]))) {
-      stop("predict() did not return finite minimum, mean and maximum SED values.", call. = FALSE)
+    if (length(avsed) < 2L || !is.finite(avsed[2])) {
+      stop("predict() did not return a finite mean SED value.", call. = FALSE)
     }
-    n <- nrow(G)
-    diag_mean    <- mean(diag(G))
-    offdiag_mean <- (sum(G) - sum(diag(G))) / (n * (n - 1))
-    G_scale <- diag_mean - offdiag_mean
-    varG    <- varcomp$Vg * G_scale
-  
-    if (!is.finite(varG) || varG <= 0 || !is.finite(G_scale) || G_scale <= 0) {
-      warning("Cullis heritability is undefined because Vg or the GRM scale is not positive.", call. = FALSE)
-      return(list(
-        h2 = NA_real_, Dg = diag_mean - mean(G),
-        metrics = c(Heritability = NA_real_, Heritability_SE = NA_real_,
-                    Heritability_min = NA_real_, Heritability_min_SE = NA_real_,
-                    Heritability_max = NA_real_, Heritability_max_SE = NA_real_,
-                    Heritability_unscaled = NA_real_)
-      ))
+    if (boundary$flag) {
+      warning(sprintf(
+        "Unstable variance-component fit (residual/trait variance %.3g; largest component/trait variance %.3g). Heritability and PVE are NA; accuracy is also NA unless env_h2 was supplied.",
+        boundary$residual_fraction, boundary$component_fraction
+      ), call. = FALSE)
+      return(list(h2 = NA_real_, metrics = empty_heritability_metrics()))
     }
-  
-    h2_min <- 1 - avsed[3]^2 / (2 * varG)
-    h2     <- 1 - avsed[2]^2 / (2 * varG)
-    h2_max <- 1 - avsed[1]^2 / (2 * varG)
+    if (!is.finite(varcomp$Vg) || varcomp$Vg <= 0) {
+      warning("Cullis heritability is undefined because Vg is not positive.", call. = FALSE)
+      return(list(h2 = NA_real_, metrics = empty_heritability_metrics()))
+    }
+
+    h2 <- 1 - avsed[2]^2 / (2 * varcomp$Vg)
   
     list(
       h2 = h2,
-      Dg = diag_mean - mean(G),
       metrics = c(
         Heritability = h2,
-        Heritability_SE = cullis_vpredict(fit, avsed[2], varcomp$Vg_pos, G_scale, h2),
-        Heritability_min = h2_min,
-        Heritability_min_SE = cullis_vpredict(fit, avsed[3], varcomp$Vg_pos, G_scale, h2_min),
-        Heritability_max = h2_max,
-        Heritability_max_SE = cullis_vpredict(fit, avsed[1], varcomp$Vg_pos, G_scale, h2_max),
-        Heritability_unscaled = 1 - avsed[2]^2 / (2 * varcomp$Vg)
+        Heritability_SE = cullis_vpredict(fit, avsed[2], varcomp$Vg_pos, h2)
       )
     )
   }
@@ -729,6 +738,7 @@ run_gblup_gxe <- function(
       paste("GRM:", normalizePath(grm_file)),
       paste("Stage-1 BLUEs:", normalizePath(pheno_file)),
       paste("Engine:", engine),
+      if (engine == "asreml") paste("ASReml ai.sing:", asreml_ai_sing),
       if (engine == "bglr") {
         paste("BGLR MCMC: nIter =", bglr_n_iter, "| burnIn =", bglr_burn_in,
               "| thin =", bglr_thin, "| retained =",
@@ -753,12 +763,16 @@ run_gblup_gxe <- function(
       paste("Stage-1 error:", if (fix_stage1_error) "fixed, residual = 1/w" else
             paste0(if (engine == "bglr") "posterior " else "",
                    "scale estimated, residual = s/w")),
+      if (engine == "asreml" && !fix_stage1_error) {
+        "Boundary fit: heritability and PVE are NA; accuracy remains available only with user-supplied env_h2"
+      },
       paste("Non-marker effects r + rE:", if (nonmarker_effects) "yes" else "no"),
-      paste("Accuracy uses:", if (is.null(env_h2)) {
+      paste("Accuracy uses:", if (is.null(accuracy_h2_by_env)) {
         if (engine == "asreml") "Cullis genotype-mean heritability, per fold" else
           "BGLR posterior genotype-mean heritability approximation, per fold"
       } else {
-        paste0("env_h2: ", paste(names(env_h2), env_h2, sep = "=", collapse = ", "))
+        paste0("user-supplied stage-1 heritability: ",
+               paste(names(accuracy_h2_by_env), accuracy_h2_by_env, sep = "=", collapse = ", "))
       }),
       paste("Weights:", pheno_input$weight_source),
       paste("Weight range:", paste(signif(range(pheno$w[!is.na(pheno$y_trait)]), 4), collapse = " to ")),
@@ -781,6 +795,14 @@ run_gblup_gxe <- function(
   #===============================================================================
   check_settings()
   check_output_free()
+  if (engine == "asreml") {
+    old_asreml_ai_sing <- asreml::asreml.options()$ai.sing
+    asreml::asreml.options(ai.sing = asreml_ai_sing)
+    on.exit(
+      asreml::asreml.options(ai.sing = old_asreml_ai_sing),
+      add = TRUE
+    )
+  }
   
   log_msg("Reading inputs")
   grm         <- read_grm(grm_file)
@@ -807,6 +829,12 @@ run_gblup_gxe <- function(
   pheno_input <- read_pheno(pheno_file, all_genoids, input_k,
                             if (is.null(grm_strata_result)) NULL else grm_strata_result$strata)
   pheno       <- pheno_input$data
+  if (isTRUE(pheno_input$equal_weights) && (fix_stage1_error || nonmarker_effects)) {
+    warning("Equal-weight analysis requires an estimated residual variance; setting fix_stage1_error = FALSE and nonmarker_effects = FALSE.",
+            call. = FALSE)
+    fix_stage1_error <- FALSE
+    nonmarker_effects <- FALSE
+  }
   fixed_split <- NULL
   if (evaluation_mode == "fixed_split") {
     fixed_split <- read_fixed_split(training_ids_file, target_ids_file, unique(pheno$GenoID))
@@ -828,7 +856,7 @@ run_gblup_gxe <- function(
   run_iterations <- if (evaluation_mode == "fixed_split") 1L else n_iterations
   run_folds <- if (evaluation_mode == "fixed_split") 1L else k_folds
   geno_table  <- pheno[!duplicated(pheno$GenoID), c("GenoID", "Stratum")]
-  check_env_h2(env_h2, unique(pheno$Env))
+  accuracy_h2_by_env <- resolve_env_h2(env_h2, unique(pheno$Env))
   
   if (!is.null(grm_strata_result)) {
     data.table::fwrite(grm_strata_result$table, output_path("derived_strata.csv"))
@@ -849,7 +877,7 @@ run_gblup_gxe <- function(
   #===============================================================================
   # STEP 2. DEFINE THE MODEL
   #===============================================================================
-  # Top-level objects: predict() re-evaluates the model call
+  # Model objects used by every fold
   fixed_formula <- if (engine == "asreml") y_trait ~ Env else NULL
   random_formula <- if (engine == "asreml") {
     if (nonmarker_effects) {
@@ -882,7 +910,7 @@ run_gblup_gxe <- function(
   #===============================================================================
   # STEP 4. RUN THE REQUESTED EVALUATION
   #===============================================================================
-  # asreml::asreml() and predict() stay at top level: predict() needs the same objects
+  # The ASReml prediction specification is fitted with each model in one call.
   for (iteration in seq_len(run_iterations)) {
     log_msg(sprintf("Iteration %d of %d", iteration, run_iterations))
   
@@ -945,6 +973,9 @@ run_gblup_gxe <- function(
         )$Ginv
         training_data$GenoID <- factor(training_data$GenoID, levels = training_ids)
         training_data$Env    <- factor(training_data$Env, levels = env_levels)
+        prediction_spec <- asreml::predict.asreml(
+          classify = "vm(GenoID, training_grm_inv.sparse)", sed = TRUE
+        )
 
         GBLUPcv <- asreml::asreml(
           fixed      = fixed_formula,
@@ -954,6 +985,8 @@ run_gblup_gxe <- function(
           na.action  = asreml::na.method(x = "include", y = "include"),
           pworkspace = asreml_workspace,
           workspace  = asreml_workspace,
+          ai.sing     = asreml_ai_sing,
+          predict     = prediction_spec,
           data       = training_data
         )
         converged <- isTRUE(GBLUPcv$converge)
@@ -963,12 +996,19 @@ run_gblup_gxe <- function(
         }
 
         varcomp <- extract_varcomp(GBLUPcv)
-        pred_train <- predict(
-          GBLUPcv, classify = "vm(GenoID, training_grm_inv.sparse)", sed = TRUE,
-          pworkspace = asreml_workspace, workspace = asreml_workspace
+        Vg  <- varcomp$Vg
+        Vge <- varcomp$Vge
+        Vr  <- varcomp$Vr
+        Vre <- varcomp$Vre
+        Ve  <- varcomp$s *
+          mean(1 / training_data$w[!is.na(training_data$y_trait)])
+        boundary <- boundary_fit(Ve, c(Vg, Vge, Vr, Vre), observed_train$y_trait)
+        pred_train <- GBLUPcv$predictions
+        pred_train$pvals <- as.data.frame(
+          pred_train$pvals, stringsAsFactors = FALSE, check.names = FALSE
         )
         heritability <- cullis_heritability(
-          GBLUPcv, pred_train, varcomp, training_grm
+          GBLUPcv, pred_train, varcomp, boundary
         )
         fold_h2[fold] <- heritability$h2
 
@@ -994,14 +1034,6 @@ run_gblup_gxe <- function(
         )
         n_untested <- n_untested + fold_untested
 
-        Vg  <- varcomp$Vg
-        Vge <- varcomp$Vge
-        Vr  <- varcomp$Vr
-        Vre <- varcomp$Vre
-        Ve  <- varcomp$s *
-          mean(1 / training_data$w[!is.na(training_data$y_trait)])
-        Dg  <- heritability$Dg
-        train_row_pred <- predict_rows(observed_train, fixed_coef, effects)
         val <- prediction_metrics(
           validation_data$y_trait, val_row_pred, validation_data$Env
         )
@@ -1012,13 +1044,11 @@ run_gblup_gxe <- function(
           Vge = Vge,
           Vr = Vr,
           Vre = Vre,
-          Residual_scale = varcomp$s,
           Ve = Ve,
-          PVE = safe_ratio(Vg * Dg, (Vg + Vge) * Dg + Vr + Vre + Ve),
+          PVE = if (boundary$flag) NA_real_ else
+            safe_ratio(Vg, Vg + Vge + Vr + Vre + Ve),
           heritability$metrics,
-          GOF = mean_env_cor(
-            observed_train$y_trait, train_row_pred, observed_train$Env
-          ),
+          Boundary_fit = as.numeric(boundary$flag),
           PredictionAbility = unname(val["PA"]),
           Accuracy = accuracy_metric(
             validation_data$y_trait, val_row_pred, validation_data$Env,
@@ -1027,8 +1057,7 @@ run_gblup_gxe <- function(
           RMSE = unname(val["RMSE"]),
           Relative_RMSE = unname(val["Relative_RMSE"]),
           Standardized_RMSE = unname(val["Standardized_RMSE"]),
-          Untested_val_rows = fold_untested,
-          Converged = as.numeric(converged)
+          Untested_val_rows = fold_untested
         )
 
         fold_train[[fold]] <- read_train_predictions(pred_train)
@@ -1102,7 +1131,6 @@ run_gblup_gxe <- function(
           pheno$Fold != fold & pheno$Env %in% env_levels
         )
         training_model_position <- match(training_global_rows, model_rows)
-        train_row_pred <- bglr_fit$prediction[training_model_position]
         val <- prediction_metrics(
           validation_data$y_trait, val_row_pred, validation_data$Env
         )
@@ -1111,15 +1139,11 @@ run_gblup_gxe <- function(
           iteration, fold,
           Vg_posterior = bglr_fit$Vg,
           Vge_posterior = bglr_fit$Vge,
-          Residual_scale_posterior = bglr_fit$Ve_scale,
           Ve_posterior = Ve,
           PVE_posterior = posterior_pve,
           Heritability_genotype_mean_posterior = posterior_h2_mean,
           DIC = bglr_fit$DIC,
           MCMC_retained = bglr_fit$retained_samples,
-          GOF = mean_env_cor(
-            observed_train$y_trait, train_row_pred, observed_train$Env
-          ),
           PredictionAbility = unname(val["PA"]),
           Accuracy = accuracy_metric(
             validation_data$y_trait, val_row_pred, validation_data$Env,
@@ -1231,16 +1255,6 @@ run_gblup_gxe <- function(
   metrics <- do.call(rbind, metrics_list)
   metrics_summary <- summarise_metrics(metrics)
   data.table::fwrite(metrics_summary, output_path("summary.csv"))
-  
-  n_not_converged <- if (engine == "asreml") {
-    sum(metrics$Metric == "Converged" & metrics$Value == 0)
-  } else {
-    0L
-  }
-  if (n_not_converged > 0L) {
-    warning(n_not_converged, " fold model(s) did not report convergence. See 'Converged' in the metrics file.",
-            call. = FALSE)
-  }
   
   log_msg("Finished. Results are in: ", normalizePath(output_dir))
   print(metrics_summary)

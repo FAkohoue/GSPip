@@ -15,6 +15,8 @@ test_that("analysis functions expose required file arguments", {
                     names(formals(run_gblup_single))))
   expect_true(all(c("grm_file", "pheno_file", "output_dir", "engine") %in%
                     names(formals(run_gblup_gxe))))
+  expect_identical(formals(run_gblup_single)$asreml_ai_sing, FALSE)
+  expect_identical(formals(run_gblup_gxe)$asreml_ai_sing, FALSE)
 })
 
 test_that("loading the package does not execute workflow templates", {

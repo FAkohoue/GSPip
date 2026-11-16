@@ -26,6 +26,7 @@ run_gblup_single(
   grm_strata_seed = 123L,
   fix_stage1_error = TRUE,
   nonmarker_effects = TRUE,
+  accuracy_heritability = NULL,
   k_folds = 5L,
   n_iterations = 50L,
   base_seed = 0L,
@@ -36,6 +37,7 @@ run_gblup_single(
   min_stratum_n = 10L,
   overwrite_outputs = FALSE,
   asreml_workspace = 3.2e+08,
+  asreml_ai_sing = FALSE,
   bglr_n_iter = 12000L,
   bglr_burn_in = 2000L,
   bglr_thin = 10L,
@@ -92,6 +94,12 @@ run_gblup_single(
 
   Include the non-marker genotype effect.
 
+- accuracy_heritability:
+
+  Optional stage-1 heritability from a mixed model with genotype fitted
+  as random. Used in preference to GBLUP heritability when calculating
+  accuracy.
+
 - k_folds, n_iterations, base_seed:
 
   Cross-validation controls.
@@ -115,6 +123,12 @@ run_gblup_single(
 - asreml_workspace:
 
   Workspace passed to ASReml-R.
+
+- asreml_ai_sing:
+
+  Permit ASReml-R to continue after a singular Average Information
+  matrix. Leave \`FALSE\` unless ASReml reports this specific
+  boundary-fit problem; results then require careful review.
 
 - bglr_n_iter, bglr_burn_in, bglr_thin:
 

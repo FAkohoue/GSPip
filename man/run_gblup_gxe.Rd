@@ -35,6 +35,7 @@ run_gblup_gxe(
   min_stratum_n = 10L,
   overwrite_outputs = FALSE,
   asreml_workspace = 3.2e+08,
+  asreml_ai_sing = FALSE,
   bglr_n_iter = 12000L,
   bglr_burn_in = 2000L,
   bglr_thin = 10L,
@@ -66,7 +67,9 @@ run_gblup_gxe(
 
 \item{nonmarker_effects}{Include non-marker genotype and G by E effects.}
 
-\item{env_h2}{Optional named heritability vector by environment.}
+\item{env_h2}{Optional stage-1 heritability from a mixed model with genotype
+fitted as random: one scalar for all environments or a named vector by
+environment. Used in preference to GBLUP heritability for accuracy.}
 
 \item{cv_scheme}{Either `"CV1"` or `"CV2"`.}
 
@@ -81,6 +84,10 @@ run_gblup_gxe(
 \item{overwrite_outputs}{Permit replacement of outputs with the same run label.}
 
 \item{asreml_workspace}{Workspace passed to ASReml-R.}
+
+\item{asreml_ai_sing}{Permit ASReml-R to continue after a singular Average
+Information matrix. Leave `FALSE` unless ASReml reports this specific
+boundary-fit problem; results then require careful review.}
 
 \item{bglr_n_iter, bglr_burn_in, bglr_thin}{BGLR MCMC controls.}
 
