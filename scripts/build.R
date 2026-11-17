@@ -83,89 +83,19 @@ pkgdown::build_site()
 # 10. Build package
 devtools::build()
 
+pkgdown::clean_site()
+pkgdown::build_site()
 
 
 
+setwd("D:/OneDrive - CGIAR/GitHub libraries/GSPip")
 
-while (!is.null(dev.list())) dev.off()
+dir.create("vignettes", showWarnings = FALSE)
 
-dev.new(width = 7, height = 7)
-
-testthat::test_file(
-  "tests/testthat/test-extensions.R"
+file.copy(
+  from = "docs/articles/GSPip-workflow.md",
+  to   = "vignettes/GSPip-workflow.Rmd",
+  overwrite = TRUE
 )
 
-# Delete the cached rendered output for this vignette
-unlink("docs/articles/GSPip-large-scale.html")
-unlink("docs/articles/GSPip-large-scale_files", recursive = TRUE)
-
-# Also clear any pkgdown article cache
-unlink("vignettes/cache", recursive = TRUE)
-unlink("vignettes/GSPip-large-scale_cache", recursive = TRUE)
-
-# Now rebuild just that article from scratch
-pkgdown::build_article("GSPip-large-scale")
-
-
-file <- "R/haplotype_association.R"
-
-tools::showNonASCIIfile(file)
-
-txt <- readLines(file, encoding = "UTF-8")
-
-txt <- gsub("->", "->", txt, fixed = TRUE)
-txt <- gsub("x", "x", txt, fixed = TRUE)
-txt <- gsub("-", "-", txt, fixed = TRUE)
-txt <- gsub("...", "...", txt, fixed = TRUE)
-
-writeLines(txt, file, useBytes = TRUE)
-
-tools::showNonASCIIfile(file)
-
-
-txt <- readLines(file, encoding = "UTF-8")
-
-txt <- gsub("-", "-", txt, fixed = TRUE)
-txt <- gsub("-", "-", txt, fixed = TRUE)
-
-writeLines(txt, file, useBytes = TRUE)
-
-txt <- readLines(file, encoding = "UTF-8")
-
-txt <- gsub("->", "->", txt, fixed = TRUE)
-txt <- gsub("x", "x", txt, fixed = TRUE)
-txt <- gsub("-", "-", txt, fixed = TRUE)
-txt <- gsub("...", "...", txt, fixed = TRUE)
-txt <- gsub("union", "union", txt, fixed = TRUE)
-txt <- gsub("<=", "<=", txt, fixed = TRUE)
-txt <- gsub(">=", ">=", txt, fixed = TRUE)
-writeLines(txt, file, useBytes = TRUE)
-
-tools::showNonASCIIfile(file)
-
-
-
-
-txt <- readLines(file, encoding = "UTF-8")
-
-replacements <- c(
-  "->"="->",
-  "x"="x",
-  "-"="-",
-  "-"="-",
-  "-"="-",
-  "..."="...",
-  "union"="union",
-  "<="="<=",
-  ">="=">=",
-  "^3"="^3",
-  "Lambda"="Lambda"
-)
-
-for (sym in names(replacements)) {
-  txt <- gsub(sym, replacements[[sym]], txt, fixed = TRUE)
-}
-
-writeLines(txt, file, useBytes = TRUE)
-
-tools::showNonASCIIfile(file)
+file.exists("vignettes/GSPip-workflow.Rmd")

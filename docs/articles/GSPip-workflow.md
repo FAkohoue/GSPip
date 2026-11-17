@@ -1,34 +1,51 @@
 # Complete GSPip workflow
 
-## Objectives
+## Complete GSPip workflow
 
-GSPip integrates genotype processing, genomic relationship matrix (GRM) construction, training-population optimisation, and genomic best linear unbiased prediction (GBLUP). This tutorial demonstrates the complete workflow with the example data distributed with the package.
+### Objectives
 
-The analyses address five use cases: (i) construction of additive and dominance GRMs, (ii) optimisation of a training population for predefined or unspecified targets, (iii) repeated cross-validation with one stage-1 best linear unbiased estimate (BLUE) per genotype, (iv) genotype-by-environment (G × E) prediction under CV1 and CV2, and (v) prediction of a fixed target population.
+GSPip integrates genotype processing, genomic relationship matrix (GRM)
+construction, training-population optimisation, and genomic best linear
+unbiased prediction (GBLUP). This tutorial demonstrates the complete
+workflow with the example data distributed with the package.
 
-The example set contains 120 genotypes, 240 markers, three populations, and three environments. The numerical settings provide reproducible examples; they are not universal inferential defaults.
+The analyses address five use cases: (i) construction of additive and
+dominance GRMs, (ii) optimisation of a training population for
+predefined or unspecified targets, (iii) repeated cross-validation with
+one stage-1 best linear unbiased estimate (BLUE) per genotype, (iv)
+genotype-by-environment (G × E) prediction under CV1 and CV2, and (v)
+prediction of a fixed target population.
 
-## 1. Install and load GSPip
+The example set contains 120 genotypes, 240 markers, three populations,
+and three environments. The numerical settings provide reproducible
+examples; they are not universal inferential defaults.
+
+### 1. Install and load GSPip
 
 Install the package from GitHub:
 
-```r
+``` r
 install.packages("pak")
 pak::pak("FAkohoue/GSPip")
 ```
 
 Load GSPip and install the optional R packages used in this tutorial:
 
-```r
+``` r
 library(GSPip)
 install.packages(c("STPGA", "BGLR", "rrBLUP"))
 ```
 
-Selection of Training Populations by Genetic Algorithm (STPGA) is required for training-population optimisation. Bayesian Generalized Linear Regression (BGLR) is required for Bayesian prediction. `rrBLUP` is required for expectation-maximisation imputation. ASReml-R is licensed software and requires a separate installation. Beagle imputation requires Java and a local Beagle JAR file.
+Selection of Training Populations by Genetic Algorithm (STPGA) is
+required for training-population optimisation. Bayesian Generalized
+Linear Regression (BGLR) is required for Bayesian prediction. `rrBLUP`
+is required for expectation-maximisation imputation. ASReml-R is
+licensed software and requires a separate installation. Beagle
+imputation requires Java and a local Beagle JAR file.
 
-## 2. Locate the example inputs
+### 2. Locate the example inputs
 
-```r
+``` r
 numeric_file <- system.file(
   "extdata", "example_genotypes_numeric.csv", package = "GSPip"
 )
@@ -67,36 +84,48 @@ stopifnot(all(file.exists(input_paths)))
 
 Create one output directory:
 
-```r
+``` r
 output_dir <- file.path(getwd(), "gspip-tutorial-results")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 ```
 
-Every output file begins with `run_label`. Hence, each analysis below uses a distinct label.
+Every output file begins with `run_label`. Hence, each analysis below
+uses a distinct label.
 
-## 3. Inspect the input formats
+### 3. Inspect the input formats
 
-### Numeric genotypes
+#### Numeric genotypes
 
-The numeric file contains one marker per row. The first five columns contain marker information; the remaining 120 columns contain genotype dosages.
+The numeric file contains one marker per row. The first five columns
+contain marker information; the remaining 120 columns contain genotype
+dosages.
 
-```r
+``` r
 numeric_genotypes <- data.table::fread(numeric_file)
 dim(numeric_genotypes)
 numeric_genotypes[1:5, 1:10]
 ```
 
-Dosages are coded as `0`, `1`, `2`, or missing. Every column not assigned to marker identification, coordinates, alleles, metadata, or weights is interpreted as a genotype.
+Dosages are coded as `0`, `1`, `2`, or missing. Every column not
+assigned to marker identification, coordinates, alleles, metadata, or
+weights is interpreted as a genotype.
 
-### HapMap and Variant Call Format genotypes
+#### HapMap and Variant Call Format genotypes
 
-The HapMap file contains the 11 standard fields from `rs#` through `QCcode`, followed by sample columns. GSPip accepts allele letters, two-letter calls, International Union of Pure and Applied Chemistry (IUPAC) heterozygote codes, and numeric `0/1/2` calls.
+The HapMap file contains the 11 standard fields from `rs#` through
+`QCcode`, followed by sample columns. GSPip accepts allele letters,
+two-letter calls, International Union of Pure and Applied Chemistry
+(IUPAC) heterozygote codes, and numeric `0/1/2` calls.
 
-The Variant Call Format (VCF) file contains the nine fixed fields through `FORMAT`, followed by sample columns. Diploid biallelic `GT` calls are converted to alternative-allele dosage. Unsupported records are removed when `multiallelic_action = "remove"` and rejected when `multiallelic_action = "error"`.
+The Variant Call Format (VCF) file contains the nine fixed fields
+through `FORMAT`, followed by sample columns. Diploid biallelic `GT`
+calls are converted to alternative-allele dosage. Unsupported records
+are removed when `multiallelic_action = "remove"` and rejected when
+`multiallelic_action = "error"`.
 
-### Phenotypes and ID files
+#### Phenotypes and ID files
 
-```r
+``` r
 single_blues <- data.table::fread(single_blues_file)
 gxe_blues <- data.table::fread(gxe_blues_file)
 
@@ -106,15 +135,20 @@ dim(single_blues) # 120 genotypes
 dim(gxe_blues)    # 120 genotypes × 3 environments
 ```
 
-The single-record file contains one BLUE per genotype. The G × E file contains one BLUE per genotype and environment. Candidate and target files contain one unique `GenoID` per row.
+The single-record file contains one BLUE per genotype. The G × E file
+contains one BLUE per genotype and environment. Candidate and target
+files contain one unique `GenoID` per row.
 
-## 4. Construct an additive GRM
+### 4. Construct an additive GRM
 
-### Step 1: run quality control, imputation, and GRM construction
+#### Step 1: run quality control, imputation, and GRM construction
 
-The following call: (i) removes genotypes with more than 20% missing calls, (ii) retains markers with at least 95% call rate and 5% minor allele frequency, (iii) imputes remaining missing calls with the Wright method, and (iv) constructs an additive VanRaden GRM.
+The following call: (i) removes genotypes with more than 20% missing
+calls, (ii) retains markers with at least 95% call rate and 5% minor
+allele frequency, (iii) imputes remaining missing calls with the Wright
+method, and (iv) constructs an additive VanRaden GRM.
 
-```r
+``` r
 additive_fit <- build_grm(
   geno_file = numeric_file,
   output_dir = output_dir,
@@ -145,9 +179,9 @@ additive_fit
 additive_fit$output_files
 ```
 
-### Step 2: examine the returned object
+#### Step 2: examine the returned object
 
-```r
+``` r
 dim(additive_fit$grm)
 additive_fit$grm[1:5, 1:5]
 table(additive_fit$sample_qc$Keep)
@@ -155,36 +189,39 @@ table(additive_fit$marker_qc$Keep)
 head(additive_fit$clusters)
 ```
 
-The returned `gspip_grm` object contains the GRM, retained marker matrix, marker map, quality-control tables, optional clusters, and output paths.
+The returned `gspip_grm` object contains the GRM, retained marker
+matrix, marker map, quality-control tables, optional clusters, and
+output paths.
 
-### Step 3: identify the output files
+#### Step 3: identify the output files
 
-| Suffix | Content |
-|---|---|
-| `_grm.csv` | Genomic relationship matrix |
-| `_sample_qc.csv` | Sample missingness and filter status |
-| `_marker_qc.csv` | Marker statistics and filter status |
-| `_marker_map.csv` | Retained marker coordinates and alleles |
-| `_qc_report.txt` | Quality-control counts and thresholds |
-| `_grm_info.txt` | Inversion result and matrix diagnostics |
-| `_clusters.csv` | Principal components and cluster assignments |
-| `_imputed_genotypes.csv` | Final marker matrix |
+| Suffix                   | Content                                      |
+|--------------------------|----------------------------------------------|
+| `_grm.csv`               | Genomic relationship matrix                  |
+| `_sample_qc.csv`         | Sample missingness and filter status         |
+| `_marker_qc.csv`         | Marker statistics and filter status          |
+| `_marker_map.csv`        | Retained marker coordinates and alleles      |
+| `_qc_report.txt`         | Quality-control counts and thresholds        |
+| `_grm_info.txt`          | Inversion result and matrix diagnostics      |
+| `_clusters.csv`          | Principal components and cluster assignments |
+| `_imputed_genotypes.csv` | Final marker matrix                          |
 
 The GRM created above can be recovered with:
 
-```r
+``` r
 grm_file <- unname(additive_fit$output_files[["grm.csv"]])
 ```
 
-The packaged GRM is used in the remaining sections so that each procedure can be run independently:
+The packaged GRM is used in the remaining sections so that each
+procedure can be run independently:
 
-```r
+``` r
 grm_file <- example_grm_file
 ```
 
-### Alternative genotype formats
+#### Alternative genotype formats
 
-```r
+``` r
 hapmap_fit <- build_grm(
   geno_file = hapmap_file,
   output_dir = output_dir,
@@ -204,9 +241,9 @@ vcf_fit <- build_grm(
 )
 ```
 
-### External marker weights
+#### External marker weights
 
-```r
+``` r
 weighted_fit <- build_grm(
   geno_file = numeric_file,
   output_dir = output_dir,
@@ -220,15 +257,20 @@ weighted_fit <- build_grm(
 )
 ```
 
-The external table must contain one finite, non-negative weight for every accepted biallelic marker before quality control. The retained weights are written to `_marker_weights_used.csv`.
+The external table must contain one finite, non-negative weight for
+every accepted biallelic marker before quality control. The retained
+weights are written to `_marker_weights_used.csv`.
 
-### Other imputation methods
+#### Other imputation methods
 
-Set `imputation_method` to `"random_hwe"`, `"rrblup_em"`, or `"none"` for random Hardy-Weinberg, expectation-maximisation, or no imputation, respectively.
+Set `imputation_method` to `"random_hwe"`, `"rrblup_em"`, or `"none"`
+for random Hardy-Weinberg, expectation-maximisation, or no imputation,
+respectively.
 
-Beagle is configured within `build_grm()`:
+Beagle is configured within
+[`build_grm()`](https://FAkohoue.github.io/GSPip/reference/build_grm.md):
 
-```r
+``` r
 beagle_fit <- build_grm(
   geno_file = vcf_file,
   output_dir = output_dir,
@@ -245,13 +287,16 @@ beagle_fit <- build_grm(
 )
 ```
 
-Beagle requires chromosome, positive integer position, reference allele, and alternative allele for every retained marker.
+Beagle requires chromosome, positive integer position, reference allele,
+and alternative allele for every retained marker.
 
-## 5. Construct a dominance GRM
+### 5. Construct a dominance GRM
 
-The Su dominance GRM uses the same genotype and quality-control arguments. Marker weights and expectation-maximisation imputation are not supported for this method.
+The Su dominance GRM uses the same genotype and quality-control
+arguments. Marker weights and expectation-maximisation imputation are
+not supported for this method.
 
-```r
+``` r
 dominance_fit <- build_grm(
   geno_file = numeric_file,
   output_dir = output_dir,
@@ -266,13 +311,14 @@ dominance_fit <- build_grm(
 )
 ```
 
-## 6. Optimise a training population for predefined targets
+### 6. Optimise a training population for predefined targets
 
-### Step 1: run targeted optimisation
+#### Step 1: run targeted optimisation
 
-The example contains 90 candidates and 30 targets. The following analysis selects 40 training genotypes.
+The example contains 90 candidates and 30 targets. The following
+analysis selects 40 training genotypes.
 
-```r
+``` r
 targeted_fit <- optimize_training_population(
   grm_file = example_grm_file,
   output_dir = output_dir,
@@ -304,11 +350,12 @@ targeted_fit <- optimize_training_population(
 targeted_fit
 ```
 
-The available criteria are `PEVMEAN`, `PEVMEAN2`, `PEVMAX`, `CDMEAN`, `CDMEAN2`, and `CDMAX`. All are minimised.
+The available criteria are `PEVMEAN`, `PEVMEAN2`, `PEVMAX`, `CDMEAN`,
+`CDMEAN2`, and `CDMAX`. All are minimised.
 
-### Step 2: examine convergence and random benchmarks
+#### Step 2: examine convergence and random benchmarks
 
-```r
+``` r
 targeted_fit$replicates
 head(targeted_fit$convergence)
 summary(targeted_fit$random_benchmark$Objective)
@@ -317,11 +364,13 @@ best_objective <- min(targeted_fit$replicates$Objective)
 mean(targeted_fit$random_benchmark$Objective <= best_objective)
 ```
 
-The selected set should be interpreted with the convergence trajectories, consistency among genetic-algorithm replicates, and the equal-size random benchmark.
+The selected set should be interpreted with the convergence
+trajectories, consistency among genetic-algorithm replicates, and the
+equal-size random benchmark.
 
-### Step 3: retain the fixed-split paths
+#### Step 3: retain the fixed-split paths
 
-```r
+``` r
 training_ids_file <- unname(
   targeted_fit$output_files[["selected_training.csv"]]
 )
@@ -330,11 +379,13 @@ fixed_target_ids_file <- unname(
 )
 ```
 
-## 7. Optimise without a predefined target population
+### 7. Optimise without a predefined target population
 
-In `no_test` mode, the complement of each proposed training set forms its objective population. The complement of the best solution is written to `_target_ids.csv`.
+In `no_test` mode, the complement of each proposed training set forms
+its objective population. The complement of the best solution is written
+to `_target_ids.csv`.
 
-```r
+``` r
 no_test_fit <- optimize_training_population(
   grm_file = example_grm_file,
   output_dir = output_dir,
@@ -358,13 +409,15 @@ no_test_fit <- optimize_training_population(
 )
 ```
 
-## 8. Run repeated cross-validation with one BLUE per genotype
+### 8. Run repeated cross-validation with one BLUE per genotype
 
-### ASReml analysis
+#### ASReml analysis
 
-The single-record ASReml model is \(y = \mu + g + r + e\), where \(g\) is the genomic effect, \(r\) is the optional non-marker genotype effect, and \(e\) is the stage-1 error.
+The single-record ASReml model is $`y = \mu + g + r + e`$, where $`g`$
+is the genomic effect, $`r`$ is the optional non-marker genotype effect,
+and $`e`$ is the stage-1 error.
 
-```r
+``` r
 single_asreml <- run_gblup_single(
   grm_file = example_grm_file,
   pheno_file = single_blues_file,
@@ -393,13 +446,17 @@ single_asreml <- run_gblup_single(
 single_asreml$summary
 ```
 
-With `fix_stage1_error = TRUE`, each stage-1 error variance is fixed at `1 / weight`. The non-marker term is then estimable separately from the known stage-1 error.
+With `fix_stage1_error = TRUE`, each stage-1 error variance is fixed at
+`1 / weight`. The non-marker term is then estimable separately from the
+known stage-1 error.
 
-### BGLR analysis
+#### BGLR analysis
 
-BGLR uses the GRM as a reproducing kernel Hilbert space (RKHS) kernel. It estimates the residual scale and does not include the non-marker identity term.
+BGLR uses the GRM as a reproducing kernel Hilbert space (RKHS) kernel.
+It estimates the residual scale and does not include the non-marker
+identity term.
 
-```r
+``` r
 single_bglr <- run_gblup_single(
   grm_file = example_grm_file,
   pheno_file = single_blues_file,
@@ -426,11 +483,12 @@ single_bglr <- run_gblup_single(
 )
 ```
 
-### Equal-weight analysis
+#### Equal-weight analysis
 
-When stage-1 precision columns are unavailable, residual scale estimation and exclusion of non-marker effects are required:
+When stage-1 precision columns are unavailable, residual scale
+estimation and exclusion of non-marker effects are required:
 
-```r
+``` r
 weight_col <- NULL
 fix_stage1_error <- FALSE
 nonmarker_effects <- FALSE
@@ -438,18 +496,18 @@ nonmarker_effects <- FALSE
 
 Stage-1 precision information remains preferable when it is available.
 
-### Fold stratification
+#### Fold stratification
 
 Use a supplied population or stratum:
 
-```r
+``` r
 strata_col <- "Population"
 derive_strata_from_grm <- FALSE
 ```
 
 Derive genomic strata from GRM principal components:
 
-```r
+``` r
 strata_col <- NULL
 derive_strata_from_grm <- TRUE
 grm_strata_n_clusters <- NULL
@@ -458,22 +516,27 @@ grm_strata_n_pcs <- 2
 grm_strata_seed <- 123
 ```
 
-With `grm_strata_n_clusters = NULL`, candidate cluster counts are compared by average silhouette width. The resulting clusters are genomic groups, not predefined biological populations.
+With `grm_strata_n_clusters = NULL`, candidate cluster counts are
+compared by average silhouette width. The resulting clusters are genomic
+groups, not predefined biological populations.
 
 Run without genotype stratification:
 
-```r
+``` r
 strata_col <- NULL
 derive_strata_from_grm <- FALSE
 ```
 
-## 9. Run G × E cross-validation
+### 9. Run G × E cross-validation
 
-### CV1 with ASReml
+#### CV1 with ASReml
 
-The multi-environment ASReml model is \(y = \mu + E + g + r + gE + rE + e\). CV1 assigns complete genotypes to folds. Therefore, all environment records of a validation genotype are excluded from fitting.
+The multi-environment ASReml model is
+$`y = \mu + E + g + r + gE + rE + e`$. CV1 assigns complete genotypes to
+folds. Therefore, all environment records of a validation genotype are
+excluded from fitting.
 
-```r
+``` r
 gxe_cv1_asreml <- run_gblup_gxe(
   grm_file = example_grm_file,
   pheno_file = gxe_blues_file,
@@ -502,17 +565,20 @@ gxe_cv1_asreml <- run_gblup_gxe(
 )
 ```
 
-Environment-specific stage-1 heritabilities can be supplied for the accuracy denominator:
+Environment-specific stage-1 heritabilities can be supplied for the
+accuracy denominator:
 
-```r
+``` r
 env_h2 <- c(E1 = 0.62, E2 = 0.55, E3 = 0.58)
 ```
 
-### CV2 with ASReml
+#### CV2 with ASReml
 
-CV2 assigns genotype × environment records to folds within environment and stratum. A genotype may therefore have records in both training and validation data.
+CV2 assigns genotype × environment records to folds within environment
+and stratum. A genotype may therefore have records in both training and
+validation data.
 
-```r
+``` r
 gxe_cv2_asreml <- run_gblup_gxe(
   grm_file = example_grm_file,
   pheno_file = gxe_blues_file,
@@ -535,13 +601,15 @@ gxe_cv2_asreml <- run_gblup_gxe(
 )
 ```
 
-`Untested_val_rows` counts validation records whose genotype has no other observed record in the training data.
+`Untested_val_rows` counts validation records whose genotype has no
+other observed record in the training data.
 
-### CV1 with BGLR
+#### CV1 with BGLR
 
-The BGLR G × E model contains one genomic main-effect kernel and one genomic interaction kernel.
+The BGLR G × E model contains one genomic main-effect kernel and one
+genomic interaction kernel.
 
-```r
+``` r
 gxe_cv1_bglr <- run_gblup_gxe(
   grm_file = example_grm_file,
   pheno_file = gxe_blues_file,
@@ -570,15 +638,18 @@ gxe_cv1_bglr <- run_gblup_gxe(
 )
 ```
 
-The same arguments apply to BGLR CV2 after setting `cv_scheme = "CV2"` and assigning a distinct `run_label`.
+The same arguments apply to BGLR CV2 after setting `cv_scheme = "CV2"`
+and assigning a distinct `run_label`.
 
-## 10. Predict a fixed target population
+### 10. Predict a fixed target population
 
-### One BLUE per genotype
+#### One BLUE per genotype
 
-Use the training and target files created by targeted optimisation. Alternatively, supply independently defined files with the same `GenoID` structure.
+Use the training and target files created by targeted optimisation.
+Alternatively, supply independently defined files with the same `GenoID`
+structure.
 
-```r
+``` r
 single_fixed <- run_gblup_single(
   grm_file = example_grm_file,
   pheno_file = single_blues_file,
@@ -598,13 +669,17 @@ single_fixed <- run_gblup_single(
 )
 ```
 
-Training and target IDs must be unique, disjoint, present in the GRM, and present in the phenotype table. Training genotypes require observed trait values. Target trait values may be observed for retrospective assessment or missing for prediction.
+Training and target IDs must be unique, disjoint, present in the GRM,
+and present in the phenotype table. Training genotypes require observed
+trait values. Target trait values may be observed for retrospective
+assessment or missing for prediction.
 
-### G × E prediction
+#### G × E prediction
 
-Fixed G × E prediction is defined at genotype level and therefore requires CV1.
+Fixed G × E prediction is defined at genotype level and therefore
+requires CV1.
 
-```r
+``` r
 gxe_fixed <- run_gblup_gxe(
   grm_file = example_grm_file,
   pheno_file = gxe_blues_file,
@@ -626,13 +701,15 @@ gxe_fixed <- run_gblup_gxe(
 )
 ```
 
-All environment records of a target genotype are excluded from fitting. `_split_ids.csv` records the role of every genotype.
+All environment records of a target genotype are excluded from fitting.
+`_split_ids.csv` records the role of every genotype.
 
-## 11. Interpret the GBLUP outputs
+### 11. Interpret the GBLUP outputs
 
-Both GBLUP functions return the complete analysis in memory and write auditable files.
+Both GBLUP functions return the complete analysis in memory and write
+auditable files.
 
-```r
+``` r
 names(single_asreml)
 single_asreml$summary
 head(single_asreml$metrics)
@@ -641,7 +718,7 @@ single_asreml$output_files
 ```
 
 | Suffix | Content |
-|---|---|
+|----|----|
 | `_metrics.csv` | Fold- and iteration-level metrics |
 | `_summary.csv` | Mean and standard deviation across iterations |
 | `_cv_predictions.csv` | Out-of-sample genotype predictions |
@@ -655,21 +732,36 @@ single_asreml$output_files
 | `_derived_strata_pc_variance.csv` | GRM eigenvalues and principal components used for clustering |
 | `_run_info.txt` | Settings, input counts, and package versions |
 
-Fold `0` in `_metrics.csv` contains statistics calculated from predictions pooled across all folds within an iteration.
+Fold `0` in `_metrics.csv` contains statistics calculated from
+predictions pooled across all folds within an iteration.
 
-`PredictionAbility` is the correlation between observed BLUEs and out-of-sample predictions. `Accuracy` divides prediction ability by the square root of heritability. For G × E analyses, prediction ability is calculated within environment and then averaged.
+`PredictionAbility` is the correlation between observed BLUEs and
+out-of-sample predictions. `Accuracy` divides prediction ability by the
+square root of heritability. For G × E analyses, prediction ability is
+calculated within environment and then averaged.
 
-`RMSE` is the root mean squared error of out-of-sample predictions. `Relative_RMSE` expresses RMSE as a percentage of the absolute trait mean. `Standardized_RMSE` divides RMSE by the observed standard deviation; the G × E calculation first removes environment means.
+`RMSE` is the root mean squared error of out-of-sample predictions.
+`Relative_RMSE` expresses RMSE as a percentage of the absolute trait
+mean. `Standardized_RMSE` divides RMSE by the observed standard
+deviation; the G × E calculation first removes environment means.
 
-ASReml analyses report residual maximum likelihood (REML) variance components, proportion of variance explained (PVE), and Cullis heritability when the fitted model supports these quantities. BGLR analyses report posterior summaries with the suffix `_posterior`, together with the deviance information criterion (DIC) and retained Markov chain Monte Carlo (MCMC) sample count.
+ASReml analyses report residual maximum likelihood (REML) variance
+components, proportion of variance explained (PVE), and Cullis
+heritability when the fitted model supports these quantities. BGLR
+analyses report posterior summaries with the suffix `_posterior`,
+together with the deviance information criterion (DIC) and retained
+Markov chain Monte Carlo (MCMC) sample count.
 
-`Boundary_fit = 1` identifies an unstable ASReml variance solution. Heritability and PVE are not reported for such a fit.
+`Boundary_fit = 1` identifies an unstable ASReml variance solution.
+Heritability and PVE are not reported for such a fit.
 
-## 12. Use editable workflow templates
+### 12. Use editable workflow templates
 
-The exported functions form the package application programming interface (API). GSPip also installs thin wrapper templates for analyses managed through settings files.
+The exported functions form the package application programming
+interface (API). GSPip also installs thin wrapper templates for analyses
+managed through settings files.
 
-```r
+``` r
 dir.create("analysis", showWarnings = FALSE)
 gspip_script("grm_builder", copy_to = "analysis/")
 gspip_script("optimize_training_population", copy_to = "analysis/")
@@ -677,10 +769,17 @@ gspip_script("gblup_cv_single", copy_to = "analysis/")
 gspip_script("gblup_cv_gxe", copy_to = "analysis/")
 ```
 
-Each copied file calls the corresponding exported function. Hence, direct function calls and template-based analyses use the same implementation and produce the same output structure.
+Each copied file calls the corresponding exported function. Hence,
+direct function calls and template-based analyses use the same
+implementation and produce the same output structure.
 
-## 13. Preserve existing results
+### 13. Preserve existing results
 
-Every analysis stops when files with the selected `run_label` already exist and `overwrite_outputs = FALSE`. A new `run_label` creates a separate analysis. Existing files are replaced only when `overwrite_outputs = TRUE` is set explicitly.
+Every analysis stops when files with the selected `run_label` already
+exist and `overwrite_outputs = FALSE`. A new `run_label` creates a
+separate analysis. Existing files are replaced only when
+`overwrite_outputs = TRUE` is set explicitly.
 
-Therefore, the complete workflow can be reproduced from the input files, function arguments, output files, and package versions recorded in `_run_info.txt`.
+Therefore, the complete workflow can be reproduced from the input files,
+function arguments, output files, and package versions recorded in
+`_run_info.txt`.
