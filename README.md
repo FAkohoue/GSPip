@@ -16,7 +16,13 @@ The complete workflow can:
 
 The repository is run directly from R. Each analysis has a settings block at the beginning of its entry-point file; configure that block and source the file.
 
-The [end-to-end workflow vignette](vignettes/end-to-end-workflow.md) gives complete procedures for GRM construction, training-population optimization, repeated cross-validation, G × E prediction, and fixed training/target analyses.
+## Documentation
+
+- [Complete GSPip workflow tutorial](https://FAkohoue.github.io/GSPip/articles/GSPip-workflow.html)
+- [Function reference](https://FAkohoue.github.io/GSPip/reference/index.html)
+- [GSPip package website](https://FAkohoue.github.io/GSPip/)
+
+The complete workflow tutorial provides procedures for GRM construction, training-population optimization, repeated cross-validation, G × E prediction, and fixed training/target analyses.
 
 ## Functions
 
